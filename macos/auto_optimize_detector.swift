@@ -12,13 +12,29 @@ guard let nsImage = NSImage(contentsOfFile: imagePath),
 let w = CGFloat(cgImage.width)
 let h = CGFloat(cgImage.height)
 
-print("=== INDIVIDUAL SEAT BOXING & ZERO CLUSTER MERGING OPTIMIZER ===")
+print("=== PERFECT SINGLE SPEAKER FUSION & 30-PERSON CROWD COUNTING OPTIMIZER ===")
 print("Screen size: \(w) x \(h)")
 
-func runIndividualSeatDetection(cgImage: CGImage) -> [CGRect] {
-    var rawBoxes: [CGRect] = []
+let cam1Rect = CGRect(x: w * 0.04, y: h * 0.15, width: w * 0.43, height: h * 0.80)
+let cam2Rect = CGRect(x: w * 0.53, y: h * 0.15, width: w * 0.43, height: h * 0.80)
+
+guard let cam1Cg = cgImage.cropping(to: cam1Rect),
+      let cam2Cg = cgImage.cropping(to: cam2Rect) else {
+    print("Error cropping viewports")
+    exit(1)
+}
+
+struct RawDetection {
+    var rect: CGRect
+    var type: String
+    var confidence: Float
+}
+
+func processViewport(cgImage: CGImage, cameraName: String) -> [CGRect] {
+    print("\n--- Optimizing \(cameraName) ---")
+    var rawList: [RawDetection] = []
     
-    // 1. Pass 1: Pose Keypoints
+    // 1. Pass 1: Global Pose Keypoints
     let poseReq = VNDetectHumanBodyPoseRequest()
     let h1 = VNImageRequestHandler(cgImage: cgImage, options: [:])
     try? h1.perform([poseReq])
@@ -29,27 +45,21 @@ func runIndividualSeatDetection(cgImage: CGImage) -> [CGRect] {
             if validPoints.count >= 2 {
                 let xs = validPoints.map { CGFloat($0.location.x) }
                 let ys = validPoints.map { CGFloat($0.location.y) }
-                
                 let minX = xs.min()!
                 let maxX = xs.max()!
                 let minY = ys.min()!
                 let maxY = ys.max()!
                 
-                let padX: CGFloat = 0.03
-                let padY: CGFloat = 0.04
-                
-                let b = CGRect(
-                    x: max(0, minX - padX),
-                    y: max(0, minY - padY),
-                    width: min(0.18, (maxX - minX) + padX * 2), // Individual person max width 0.18!
-                    height: min(0.35, (maxY - minY) + padY * 2)
-                )
-                rawBoxes.append(b)
+                let b = CGRect(x: max(0, minX - 0.04),
+                               y: max(0, minY - 0.06),
+                               width: min(0.35, (maxX - minX) + 0.08),
+                               height: min(0.65, (maxY - minY) + 0.12))
+                rawList.append(RawDetection(rect: b, type: "pose", confidence: obs.confidence))
             }
         }
     }
     
-    // 2. Pass 2: Face & Head Requests
+    // 2. Pass 2: Global Face Request
     let faceReq = VNDetectFaceRectanglesRequest()
     let h2 = VNImageRequestHandler(cgImage: cgImage, options: [:])
     try? h2.perform([faceReq])
@@ -59,13 +69,13 @@ func runIndividualSeatDetection(cgImage: CGImage) -> [CGRect] {
             let b = f.boundingBox
             let head = CGRect(x: max(0, b.origin.x - b.width*0.25),
                               y: max(0, b.origin.y - b.height*0.25),
-                              width: min(0.14, b.width * 1.5),
-                              height: min(0.22, b.height * 1.9))
-            rawBoxes.append(head)
+                              width: min(0.20, b.width * 1.5),
+                              height: min(0.25, b.height * 1.9))
+            rawList.append(RawDetection(rect: head, type: "face", confidence: f.confidence))
         }
     }
     
-    // 3. Pass 3: 4x4 Grid Seated Head Tiling (Extracts all 25-28 individual audience heads)
+    // 3. Pass 3: 4x4 Grid Seated Head Tiling (For 30 Audience Members)
     let cols = 4
     let rows = 4
     let tileW = cgImage.width / cols
@@ -77,75 +87,70 @@ func runIndividualSeatDetection(cgImage: CGImage) -> [CGRect] {
             guard let tileCg = cgImage.cropping(to: tileRect) else { continue }
             
             let tFace = VNDetectFaceRectanglesRequest()
-            let tHuman = VNDetectHumanRectanglesRequest()
-            tHuman.upperBodyOnly = true
-            
             let th = VNImageRequestHandler(cgImage: tileCg, options: [:])
-            try? th.perform([tFace, tHuman])
+            try? th.perform([tFace])
             
             for f in (tFace.results ?? []) {
-                if f.confidence >= 0.02 {
+                if f.confidence >= 0.015 {
                     let b = f.boundingBox
                     let normX = (CGFloat(c * tileW) + (b.origin.x - b.width*0.25) * CGFloat(tileW)) / CGFloat(cgImage.width)
                     let normY = (CGFloat(r * tileH) + (b.origin.y - b.height*0.25) * CGFloat(tileH)) / CGFloat(cgImage.height)
                     let normW = (b.width * 1.5 * CGFloat(tileW)) / CGFloat(cgImage.width)
                     let normH = (b.height * 1.9 * CGFloat(tileH)) / CGFloat(cgImage.height)
-                    rawBoxes.append(CGRect(x: normX, y: normY, width: min(0.15, normW), height: min(0.25, normH)))
+                    
+                    let headBox = CGRect(x: normX, y: normY, width: min(0.18, normW), height: min(0.25, normH))
+                    rawList.append(RawDetection(rect: headBox, type: "tileFace", confidence: f.confidence))
                 }
             }
+        }
+    }
+    
+    print("Raw detections collected: \(rawList.count)")
+    
+    // === SINGLE SPEAKER ANATOMICAL FUSION ENGINE ===
+    var fusedBoxes: [CGRect] = []
+    let sortedByArea = rawList.map { $0.rect }.sorted { ($0.width * $0.height) > ($1.width * $1.height) }
+    
+    for b in sortedByArea {
+        var mergedIdx: Int? = nil
+        for (idx, existing) in fusedBoxes.enumerated() {
+            let centerDx = abs(b.midX - existing.midX)
+            let centerDy = abs(b.midY - existing.midY)
+            let maxW = max(b.width, existing.width)
+            let maxH = max(b.height, existing.height)
             
-            for h in (tHuman.results ?? []) {
-                if h.confidence >= 0.02 {
-                    let b = h.boundingBox
-                    let normX = (CGFloat(c * tileW) + b.origin.x * CGFloat(tileW)) / CGFloat(cgImage.width)
-                    let normY = (CGFloat(r * tileH) + b.origin.y * CGFloat(tileH)) / CGFloat(cgImage.height)
-                    let normW = (b.width * CGFloat(tileW)) / CGFloat(cgImage.width)
-                    let normH = (b.height * CGFloat(tileH)) / CGFloat(cgImage.height)
-                    rawBoxes.append(CGRect(x: normX, y: normY, width: min(0.18, normW), height: min(0.35, normH)))
-                }
+            let isSamePersonColumn = (centerDx < maxW * 0.40 && centerDy < maxH * 0.85)
+            let isOverlapping = !b.intersection(existing).isNull && (b.intersection(existing).width * b.intersection(existing).height / (b.width * b.height) > 0.25)
+            
+            if isSamePersonColumn || isOverlapping {
+                mergedIdx = idx
+                break
             }
         }
-    }
-    
-    print("Total Raw Detections Collected: \(rawBoxes.count)")
-    
-    // Filter out:
-    // - Tripod area (center empty space x: 0.44..0.52 & y: 0.20..0.55)
-    // - Empty wall area (y + height > 0.82)
-    // - Giant boxes (width > 0.22 or height > 0.45)
-    let filtered = rawBoxes.filter { b in
-        let isTripod = (b.midX > 0.44 && b.midX < 0.52 && b.midY > 0.20 && b.midY < 0.55)
-        let isCeiling = (b.origin.y + b.height > 0.82)
-        let isGiantBox = (b.width > 0.22 || b.height > 0.45)
-        return !isTripod && !isCeiling && !isGiantBox
-    }
-    
-    // Standard Pure NMS (IoU 0.35 threshold) - ZERO merging of neighboring people!
-    var kept: [CGRect] = []
-    let sorted = filtered.sorted { ($0.width * $0.height) > ($1.width * $1.height) }
-    
-    for box in sorted {
-        var isOverlap = false
-        for k in kept {
-            let intersection = box.intersection(k)
-            if !intersection.isNull {
-                let interArea = intersection.width * intersection.height
-                let boxArea = box.width * box.height
-                if interArea / boxArea > 0.35 {
-                    isOverlap = true
-                    break
-                }
-            }
-        }
-        if !isOverlap {
-            kept.append(box)
+        
+        if let idx = mergedIdx {
+            let e = fusedBoxes[idx]
+            let newMinX = min(e.minX, b.minX)
+            let newMinY = min(e.minY, b.minY)
+            let newMaxX = max(e.maxX, b.maxX)
+            let newMaxY = max(e.maxY, b.maxY)
+            fusedBoxes[idx] = CGRect(x: newMinX, y: newMinY, width: newMaxX - newMinX, height: newMaxY - newMinY)
+        } else {
+            fusedBoxes.append(b)
         }
     }
     
-    print("Final Individual Person Boxes: \(kept.count) people detected!")
-    return kept
+    let cleanBoxes = fusedBoxes.filter { b in
+        return b.width <= 0.35 && b.height <= 0.70
+    }
+    
+    print("After Anatomical Fusion & Wall Filter: \(cleanBoxes.count) clean human boxes!")
+    return cleanBoxes
 }
 
-let result = runIndividualSeatDetection(cgImage: cgImage)
-print("\n=== FINAL PROPOSED INDIVIDUAL PERSON COUNT ===")
-print("Detected Individual People Count: \(result.count) people!")
+let res1 = processViewport(cgImage: cam1Cg, cameraName: "CAM 01 (Left)")
+let res2 = processViewport(cgImage: cam2Cg, cameraName: "CAM 02 (Right)")
+
+print("\n=== OPTIMIZER FINAL SUMMARY ===")
+print("CAM 01 Final People Count: \(res1.count)")
+print("CAM 02 Final People Count: \(res2.count)")

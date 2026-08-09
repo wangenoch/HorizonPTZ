@@ -24,8 +24,8 @@ class PersonTracker {
     private var trackedPeople: [InternalTrackedPerson] = []
     private var featureGallery: [Int: VNFeaturePrintObservation] = [:]
     private var nextId = 1
-    private let maxDisappeared = 20 // Holds detections across temporary occlusions to prevent count jumping!
-    private let minConfirmedFrames = 2 // Anti-flicker: Must persist 2 frames to eliminate momentary noise
+    private let maxDisappeared = 25 // Holds detections across temporary head movements to keep count steady!
+    private let minConfirmedFrames = 2 // Anti-flicker: Must persist 2 frames to eliminate noise
     
     func update(with newBoxes: [CGRect], cgImage: CGImage, distThreshold: CGFloat, alpha: CGFloat, isReIdEnabled: Bool, reIdSimilarity: Float) -> [(id: Int, box: CGRect)] {
         if trackedPeople.isEmpty {
@@ -71,7 +71,7 @@ class PersonTracker {
             var person = trackedPeople[match.trackedIdx]
             let targetBox = newBoxes[match.newBoxIdx]
             
-            // EMA Exponential Moving Average Smoothing
+            // Exponential Moving Average (EMA) position smoothing
             let smoothedBox = CGRect(
                 x: person.box.origin.x * (1 - alpha) + targetBox.origin.x * alpha,
                 y: person.box.origin.y * (1 - alpha) + targetBox.origin.y * alpha,
@@ -193,14 +193,14 @@ class PeopleCounterService: ObservableObject {
     static let shared = PeopleCounterService()
     
     @Published var currentEngineMode: AiEngineMode = .coreMLYolo
-    @Published var confidenceThreshold: Float = 0.12  // Clean confidence threshold (12%) to eliminate ceiling false positives
-    @Published var minObjectSize: Float = 0.005       // 0.5% area threshold for real people/heads
-    @Published var samplingFps: Int = 10              // High FPS sampling 10 FPS
-    @Published var trackingAlpha: Float = 0.85       // Smooth movement EMA alpha
-    @Published var maxMotionDistance: Float = 0.38   // Fast motion distance matching
+    @Published var confidenceThreshold: Float = 0.08
+    @Published var minObjectSize: Float = 0.003
+    @Published var samplingFps: Int = 10
+    @Published var trackingAlpha: Float = 0.85
+    @Published var maxMotionDistance: Float = 0.38
     
-    @Published var isReIdEnabled: Bool = true        // Re-ID Visual Feature Memory Enabled
-    @Published var reIdSimilarity: Float = 0.80       // Re-ID Similarity threshold (80%)
+    @Published var isReIdEnabled: Bool = true
+    @Published var reIdSimilarity: Float = 0.80
     
     private var tracker1 = PersonTracker()
     private var tracker2 = PersonTracker()
@@ -267,50 +267,46 @@ class PeopleCounterService: ObservableObject {
     }
     
     private func runAppleVisionInference(cgImage: CGImage) -> [CGRect] {
-        return runMultiScaleInference(cgImage: cgImage)
+        return runMultiTileInference(cgImage: cgImage)
     }
     
     private func runCoreMLYoloInference(cgImage: CGImage) -> [CGRect] {
-        return runMultiScaleInference(cgImage: cgImage)
+        return runMultiTileInference(cgImage: cgImage)
     }
     
-    private func runMultiScaleInference(cgImage: CGImage) -> [CGRect] {
+    private func runMultiTileInference(cgImage: CGImage) -> [CGRect] {
         var rawBoxes: [CGRect] = []
         
-        // Pass 1: Full Image Pass
+        // Pass 1: Full Image Pass (Stage & Speaker Pass)
         let reqFull = VNDetectHumanRectanglesRequest()
         reqFull.upperBodyOnly = false
         let reqUpper = VNDetectHumanRectanglesRequest()
         reqUpper.upperBodyOnly = true
         let reqFace = VNDetectFaceRectanglesRequest()
         
-        let handler1 = VNImageRequestHandler(cgImage: cgImage, options: [:])
-        try? handler1.perform([reqFull, reqUpper, reqFace])
+        let h1 = VNImageRequestHandler(cgImage: cgImage, options: [:])
+        try? h1.perform([reqFull, reqUpper, reqFace])
         
-        for r in (reqFull.results ?? []) + (reqUpper.results ?? []) {
-            if r.confidence >= self.confidenceThreshold {
-                // Filter out false positives in the top 15% ceiling region (y > 0.85 in normalized space)
-                if r.boundingBox.origin.y + r.boundingBox.height < 0.85 {
-                    rawBoxes.append(r.boundingBox)
-                }
-            }
+        for r in (reqFull.results ?? []) {
+            if r.confidence >= self.confidenceThreshold { rawBoxes.append(r.boundingBox) }
+        }
+        for r in (reqUpper.results ?? []) {
+            if r.confidence >= self.confidenceThreshold { rawBoxes.append(r.boundingBox) }
         }
         for f in (reqFace.results ?? []) {
             if f.confidence >= self.confidenceThreshold {
                 let b = f.boundingBox
-                if b.origin.y + b.height < 0.88 {
-                    let headBox = CGRect(x: max(0, b.origin.x - b.width*0.15),
-                                         y: max(0, b.origin.y - b.height*0.2),
-                                         width: min(1.0 - b.origin.x, b.width * 1.3),
-                                         height: min(1.0 - b.origin.y, b.height * 1.7))
-                    rawBoxes.append(headBox)
-                }
+                let headBox = CGRect(x: max(0, b.origin.x - b.width*0.2),
+                                     y: max(0, b.origin.y - b.height*0.2),
+                                     width: min(1.0 - b.origin.x, b.width * 1.4),
+                                     height: min(1.0 - b.origin.y, b.height * 1.8))
+                rawBoxes.append(headBox)
             }
         }
         
-        // Pass 2: 3x2 Grid Sub-region Pass for Seated Audience Heads
+        // Pass 2: 3x3 Grid Tiles (Zoomed-in Multi-scale Tiling for Seated Audience)
         let cols = 3
-        let rows = 2
+        let rows = 3
         let tileW = cgImage.width / cols
         let tileH = cgImage.height / rows
         
@@ -319,41 +315,49 @@ class PeopleCounterService: ObservableObject {
                 let tileRect = CGRect(x: c * tileW, y: r * tileH, width: tileW, height: tileH)
                 guard let tileCg = cgImage.cropping(to: tileRect) else { continue }
                 
-                let tReq1 = VNDetectHumanRectanglesRequest()
-                tReq1.upperBodyOnly = false
-                let tReq2 = VNDetectHumanRectanglesRequest()
-                tReq2.upperBodyOnly = true
+                // In seating area (bottom 2 rows in Vision y-up space r <= 1), use higher sensitivity (0.015)
+                let isSeatingArea = (r <= 1)
+                let tileThresh: Float = isSeatingArea ? 0.015 : self.confidenceThreshold
+                
+                let tFull = VNDetectHumanRectanglesRequest()
+                tFull.upperBodyOnly = false
+                let tUpper = VNDetectHumanRectanglesRequest()
+                tUpper.upperBodyOnly = true
                 let tFace = VNDetectFaceRectanglesRequest()
                 
                 let th = VNImageRequestHandler(cgImage: tileCg, options: [:])
-                try? th.perform([tReq1, tReq2, tFace])
+                try? th.perform([tFull, tUpper, tFace])
                 
-                for res in (tReq1.results ?? []) + (tReq2.results ?? []) {
-                    if res.confidence >= self.confidenceThreshold {
+                for res in (tFull.results ?? []) {
+                    if res.confidence >= tileThresh {
                         let b = res.boundingBox
                         let normX = (CGFloat(c * tileW) + b.origin.x * CGFloat(tileW)) / CGFloat(cgImage.width)
                         let normY = (CGFloat(r * tileH) + b.origin.y * CGFloat(tileH)) / CGFloat(cgImage.height)
                         let normW = (b.width * CGFloat(tileW)) / CGFloat(cgImage.width)
                         let normH = (b.height * CGFloat(tileH)) / CGFloat(cgImage.height)
-                        
-                        // Exclude ceiling region
-                        if normY + normH < 0.85 {
-                            rawBoxes.append(CGRect(x: normX, y: normY, width: normW, height: normH))
-                        }
+                        rawBoxes.append(CGRect(x: normX, y: normY, width: normW, height: normH))
+                    }
+                }
+                
+                for res in (tUpper.results ?? []) {
+                    if res.confidence >= tileThresh {
+                        let b = res.boundingBox
+                        let normX = (CGFloat(c * tileW) + b.origin.x * CGFloat(tileW)) / CGFloat(cgImage.width)
+                        let normY = (CGFloat(r * tileH) + b.origin.y * CGFloat(tileH)) / CGFloat(cgImage.height)
+                        let normW = (b.width * CGFloat(tileW)) / CGFloat(cgImage.width)
+                        let normH = (b.height * CGFloat(tileH)) / CGFloat(cgImage.height)
+                        rawBoxes.append(CGRect(x: normX, y: normY, width: normW, height: normH))
                     }
                 }
                 
                 for f in (tFace.results ?? []) {
-                    if f.confidence >= self.confidenceThreshold {
+                    if f.confidence >= tileThresh {
                         let b = f.boundingBox
-                        let normX = (CGFloat(c * tileW) + (b.origin.x - b.width*0.15) * CGFloat(tileW)) / CGFloat(cgImage.width)
+                        let normX = (CGFloat(c * tileW) + (b.origin.x - b.width*0.2) * CGFloat(tileW)) / CGFloat(cgImage.width)
                         let normY = (CGFloat(r * tileH) + (b.origin.y - b.height*0.2) * CGFloat(tileH)) / CGFloat(cgImage.height)
-                        let normW = (b.width * 1.3 * CGFloat(tileW)) / CGFloat(cgImage.width)
-                        let normH = (b.height * 1.7 * CGFloat(tileH)) / CGFloat(cgImage.height)
-                        
-                        if normY + normH < 0.88 {
-                            rawBoxes.append(CGRect(x: normX, y: normY, width: normW, height: normH))
-                        }
+                        let normW = (b.width * 1.4 * CGFloat(tileW)) / CGFloat(cgImage.width)
+                        let normH = (b.height * 1.8 * CGFloat(tileH)) / CGFloat(cgImage.height)
+                        rawBoxes.append(CGRect(x: normX, y: normY, width: normW, height: normH))
                     }
                 }
             }
@@ -363,36 +367,41 @@ class PeopleCounterService: ObservableObject {
     }
     
     private func mergeAndFilterBoxes(_ inputBoxes: [CGRect]) -> [CGRect] {
-        var kept: [CGRect] = []
-        let minArea = CGFloat(self.minObjectSize) // 0.005
+        let minArea = CGFloat(self.minObjectSize) // 0.003
         
-        let filtered = inputBoxes.filter { box in
-            let area = box.width * box.height
-            return area >= minArea && box.origin.y + box.height < 0.88 // Never detect ceiling!
+        // Rule A: Exclude top ceiling wall area (y + height >= 0.82 in Vision y-up space)
+        let validBoxes = inputBoxes.filter { b in
+            let area = b.width * b.height
+            return area >= minArea && b.origin.y + b.height < 0.82
         }
         
-        // Pure Non-Maximum Suppression (NMS) - ZERO slicing, ZERO artificial grid anchors!
-        let sorted = filtered.sorted { ($0.width * $0.height) > ($1.width * $1.height) }
+        // Rule B: Vertical Containment NMS (Absorbs Upper Body & Lower Body into Full Body!)
+        // Prevents a single person from being sliced into upper/lower body boxes!
+        var mergedBoxes: [CGRect] = []
+        let sortedByArea = validBoxes.sorted { ($0.width * $0.height) > ($1.width * $1.height) }
         
-        for box in sorted {
-            var isDup = false
-            for k in kept {
-                let intersection = box.intersection(k)
+        for b in sortedByArea {
+            var isSubBoxOfLarger = false
+            for m in mergedBoxes {
+                let intersection = b.intersection(m)
                 if !intersection.isNull {
                     let interArea = intersection.width * intersection.height
-                    let boxArea = box.width * box.height
-                    // NMS IoU 0.50 threshold to remove overlapping duplicates of the same person
-                    if interArea / boxArea > 0.50 {
-                        isDup = true
+                    let bArea = b.width * b.height
+                    let verticalOverlap = intersection.height / b.height
+                    let horizontalOverlap = intersection.width / b.width
+                    
+                    // If smaller box is >35% contained in larger box OR >50% vertically overlapping within same body column
+                    if (interArea / bArea > 0.35) || (verticalOverlap > 0.50 && horizontalOverlap > 0.50) {
+                        isSubBoxOfLarger = true
                         break
                     }
                 }
             }
-            if !isDup {
-                kept.append(box)
+            if !isSubBoxOfLarger {
+                mergedBoxes.append(b)
             }
         }
         
-        return kept
+        return mergedBoxes
     }
 }

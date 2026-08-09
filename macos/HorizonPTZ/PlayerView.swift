@@ -283,6 +283,7 @@ struct PlayerView: View {
                     if self.isAiEnabled {
                         self.liveHumans = result.trackedHumans
                         self.liveCount = result.count
+                        AppLogger.log("🎯 [PlayerView \(self.index)] AI Detection Count = \(result.count) | Tracked IDs: \(result.trackedHumans.map { $0.id })")
                     }
                     self.isAnalyzing = false
                 }

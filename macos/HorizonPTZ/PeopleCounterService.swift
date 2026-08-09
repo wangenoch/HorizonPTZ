@@ -245,19 +245,22 @@ class PeopleCounterService: ObservableObject {
             }
         }
         
-        // 2. Pass 2: 6x6 Seated Audience Micro Grid (Extracts all 30 audience heads individually)
-        let cols = 6
-        let rows = 6
-        let tileW = cgImage.width / cols
-        let tileH = cgImage.height / rows
+        // 2. Pass 2: 8x8 Seated Audience Micro Grid (Extracts all audience heads in dense crowd)
+        let cols = 8
+        let rows = 8
+        let tileW = CGFloat(cgImage.width) / CGFloat(cols)
+        let tileH = CGFloat(cgImage.height) / CGFloat(rows)
+        let fullW = CGFloat(cgImage.width)
+        let fullH = CGFloat(cgImage.height)
         
         for r in 0..<rows {
             for c in 0..<cols {
-                let tileRect = CGRect(x: c * tileW, y: r * tileH, width: tileW, height: tileH)
+                let tileRect = CGRect(x: CGFloat(c) * tileW, y: CGFloat(r) * tileH, width: tileW, height: tileH)
                 guard let tileCg = cgImage.cropping(to: tileRect) else { continue }
                 
-                let isAudienceArea = (r <= 3)
-                let tileThresh: Float = isAudienceArea ? 0.015 : 0.05
+                // Lower rows (r >= 1) is audience seating area
+                let isAudienceArea = (r >= 1)
+                let tileThresh: Float = isAudienceArea ? 0.005 : 0.03
                 
                 let tFace = VNDetectFaceRectanglesRequest()
                 let tHuman = VNDetectHumanRectanglesRequest()
@@ -269,39 +272,41 @@ class PeopleCounterService: ObservableObject {
                 for f in (tFace.results ?? []) {
                     if f.confidence >= tileThresh {
                         let b = f.boundingBox
-                        let normX = (CGFloat(c * tileW) + (b.origin.x - b.width*0.20) * CGFloat(tileW)) / CGFloat(cgImage.width)
-                        let normY = (CGFloat(r * tileH) + (b.origin.y - b.height*0.20) * CGFloat(tileH)) / CGFloat(cgImage.height)
-                        let normW = (b.width * 1.4 * CGFloat(tileW)) / CGFloat(cgImage.width)
-                        let normH = (b.height * 1.8 * CGFloat(tileH)) / CGFloat(cgImage.height)
-                        rawBoxes.append(CGRect(x: normX, y: normY, width: min(0.12, normW), height: min(0.18, normH)))
+                        let normX = (CGFloat(c) * tileW + (b.origin.x - b.width * 0.15) * tileW) / fullW
+                        let normY = 1.0 - ((CGFloat(r + 1) * tileH) - (b.origin.y - b.height * 0.15) * tileH) / fullH
+                        let normW = (b.width * 1.3 * tileW) / fullW
+                        let normH = (b.height * 1.6 * tileH) / fullH
+                        
+                        rawBoxes.append(CGRect(x: max(0, normX), y: max(0, normY), width: min(0.18, normW), height: min(0.25, normH)))
                     }
                 }
                 
                 for h in (tHuman.results ?? []) {
                     if h.confidence >= tileThresh {
                         let b = h.boundingBox
-                        let normX = (CGFloat(c * tileW) + b.origin.x * CGFloat(tileW)) / CGFloat(cgImage.width)
-                        let normY = (CGFloat(r * tileH) + b.origin.y * CGFloat(tileH)) / CGFloat(cgImage.height)
-                        let normW = (b.width * CGFloat(tileW)) / CGFloat(cgImage.width)
-                        let normH = (b.height * CGFloat(tileH)) / CGFloat(cgImage.height)
-                        rawBoxes.append(CGRect(x: normX, y: normY, width: min(0.16, normW), height: min(0.25, normH)))
+                        let normX = (CGFloat(c) * tileW + b.origin.x * tileW) / fullW
+                        let normY = 1.0 - ((CGFloat(r + 1) * tileH) - b.origin.y * tileH) / fullH
+                        let normW = (b.width * tileW) / fullW
+                        let normH = (b.height * tileH) / fullH
+                        
+                        rawBoxes.append(CGRect(x: max(0, normX), y: max(0, normY), width: min(0.22, normW), height: min(0.30, normH)))
                     }
                 }
             }
         }
         
-        // 3. Filter out invalid wall regions (Ceiling, Door Frame, Tripod)
+        // 3. Filter out invalid background noise (Ceiling, Door Frame, Tripod)
         let validBoxes = rawBoxes.filter { b in
             let area = b.width * b.height
             let isDoorFrame = (b.origin.x < 0.08 && b.origin.y > 0.40)
-            let isCeiling = (b.origin.y + b.height >= 0.88)
+            let isCeiling = (b.origin.y + b.height >= 0.90)
             let isTripod = (b.midX > 0.44 && b.midX < 0.54 && b.midY > 0.20 && b.midY < 0.55 && b.width < 0.20)
-            let isGiantCluster = (b.width > 0.40)
+            let isGiantCluster = (b.width > 0.55 || b.height > 0.90)
             
-            return area >= 0.0008 && !isCeiling && !isDoorFrame && !isTripod && !isGiantCluster
+            return area >= 0.0004 && !isCeiling && !isDoorFrame && !isTripod && !isGiantCluster
         }
         
-        // 4. Single Speaker Vertical Column Fusion
+        // 4. Selective Vertical Column Fusion (Applies only to presenter/tall body candidates)
         var fusedBoxes: [CGRect] = []
         let sortedByArea = validBoxes.sorted { ($0.width * $0.height) > ($1.width * $1.height) }
         
@@ -314,8 +319,10 @@ class PeopleCounterService: ObservableObject {
                 let maxW = max(b.width, existing.width)
                 let maxH = max(b.height, existing.height)
                 
-                let isSamePersonColumn = (centerDx < maxW * 0.55 && centerDy < maxH * 0.85)
-                let isOverlapping = !intersection.isNull && (intersection.width * intersection.height / min(b.width * b.height, existing.width * existing.height) > 0.25)
+                // Only fuse columns if at least one box is a presenter/tall body (height > 0.35)
+                let isPresenterCandidate = (maxH > 0.35 || maxW > 0.28)
+                let isSamePersonColumn = isPresenterCandidate && (centerDx < maxW * 0.55 && centerDy < maxH * 0.85)
+                let isOverlapping = !intersection.isNull && (intersection.width * intersection.height / min(b.width * b.height, existing.width * existing.height) > 0.45)
                 
                 if isSamePersonColumn || isOverlapping {
                     absorbedIdx = idx
@@ -340,7 +347,7 @@ class PeopleCounterService: ObservableObject {
             }
         }
         
-        // 5. STRICT CONTAINMENT & SUB-BOX SUPPRESSION (Eliminates guitar sub-box inside presenter body)
+        // 5. STRICT CONTAINMENT & SUB-BOX SUPPRESSION (Eliminates guitar soundhole box inside presenter body)
         let sortedFused = fusedBoxes.sorted { ($0.width * $0.height) > ($1.width * $1.height) }
         var keptBoxes: [CGRect] = []
         
@@ -352,8 +359,8 @@ class PeopleCounterService: ObservableObject {
                     let interArea = intersection.width * intersection.height
                     let bArea = b.width * b.height
                     
-                    let bCenterInsideK = k.contains(CGPoint(x: b.midX, y: b.midY))
-                    let isOverlapContained = (interArea / bArea) > 0.25
+                    let bCenterInsideK = k.contains(CGPoint(x: b.midX, y: b.midY)) && (b.width < k.width * 0.70 && b.height < k.height * 0.70)
+                    let isOverlapContained = (interArea / bArea) > 0.50
                     
                     if bCenterInsideK || isOverlapContained {
                         isContained = true

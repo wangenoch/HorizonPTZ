@@ -1,0 +1,595 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXContainerItemProxy section */
+		ECAC4D7C30084ECC00F2312C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = ECAC4D6430084ECA00F2312C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = ECAC4D6B30084ECA00F2312C;
+			remoteInfo = FieldGuard;
+		};
+		ECAC4D8630084ECC00F2312C /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = ECAC4D6430084ECA00F2312C /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = ECAC4D6B30084ECA00F2312C;
+			remoteInfo = FieldGuard;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXFileReference section */
+		ECAC4D6C30084ECA00F2312C /* FieldGuard.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = FieldGuard.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		ECAC4D7B30084ECC00F2312C /* FieldGuardTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FieldGuardTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		ECAC4D8530084ECC00F2312C /* FieldGuardUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = FieldGuardUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXFileSystemSynchronizedRootGroup section */
+		ECAC4D6E30084ECA00F2312C /* FieldGuard */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = FieldGuard;
+			sourceTree = "<group>";
+		};
+		ECAC4D7E30084ECC00F2312C /* FieldGuardTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = FieldGuardTests;
+			sourceTree = "<group>";
+		};
+		ECAC4D8830084ECC00F2312C /* FieldGuardUITests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = FieldGuardUITests;
+			sourceTree = "<group>";
+		};
+/* End PBXFileSystemSynchronizedRootGroup section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		ECAC4D6930084ECA00F2312C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		ECAC4D7830084ECC00F2312C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		ECAC4D8230084ECC00F2312C /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		ECAC4D6330084ECA00F2312C = {
+			isa = PBXGroup;
+			children = (
+				ECAC4D6E30084ECA00F2312C /* FieldGuard */,
+				ECAC4D7E30084ECC00F2312C /* FieldGuardTests */,
+				ECAC4D8830084ECC00F2312C /* FieldGuardUITests */,
+				ECAC4D6D30084ECA00F2312C /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		ECAC4D6D30084ECA00F2312C /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				ECAC4D6C30084ECA00F2312C /* FieldGuard.app */,
+				ECAC4D7B30084ECC00F2312C /* FieldGuardTests.xctest */,
+				ECAC4D8530084ECC00F2312C /* FieldGuardUITests.xctest */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		ECAC4D6B30084ECA00F2312C /* FieldGuard */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = ECAC4D8F30084ECC00F2312C /* Build configuration list for PBXNativeTarget "FieldGuard" */;
+			buildPhases = (
+				ECAC4D6830084ECA00F2312C /* Sources */,
+				ECAC4D6930084ECA00F2312C /* Frameworks */,
+				ECAC4D6A30084ECA00F2312C /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			fileSystemSynchronizedGroups = (
+				ECAC4D6E30084ECA00F2312C /* FieldGuard */,
+			);
+			name = FieldGuard;
+			packageProductDependencies = (
+			);
+			productName = FieldGuard;
+			productReference = ECAC4D6C30084ECA00F2312C /* FieldGuard.app */;
+			productType = "com.apple.product-type.application";
+		};
+		ECAC4D7A30084ECC00F2312C /* FieldGuardTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = ECAC4D9230084ECC00F2312C /* Build configuration list for PBXNativeTarget "FieldGuardTests" */;
+			buildPhases = (
+				ECAC4D7730084ECC00F2312C /* Sources */,
+				ECAC4D7830084ECC00F2312C /* Frameworks */,
+				ECAC4D7930084ECC00F2312C /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				ECAC4D7D30084ECC00F2312C /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				ECAC4D7E30084ECC00F2312C /* FieldGuardTests */,
+			);
+			name = FieldGuardTests;
+			packageProductDependencies = (
+			);
+			productName = FieldGuardTests;
+			productReference = ECAC4D7B30084ECC00F2312C /* FieldGuardTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		ECAC4D8430084ECC00F2312C /* FieldGuardUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = ECAC4D9530084ECC00F2312C /* Build configuration list for PBXNativeTarget "FieldGuardUITests" */;
+			buildPhases = (
+				ECAC4D8130084ECC00F2312C /* Sources */,
+				ECAC4D8230084ECC00F2312C /* Frameworks */,
+				ECAC4D8330084ECC00F2312C /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				ECAC4D8730084ECC00F2312C /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				ECAC4D8830084ECC00F2312C /* FieldGuardUITests */,
+			);
+			name = FieldGuardUITests;
+			packageProductDependencies = (
+			);
+			productName = FieldGuardUITests;
+			productReference = ECAC4D8530084ECC00F2312C /* FieldGuardUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		ECAC4D6430084ECA00F2312C /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 2660;
+				LastUpgradeCheck = 2700;
+				TargetAttributes = {
+					ECAC4D6B30084ECA00F2312C = {
+						CreatedOnToolsVersion = 26.6;
+					};
+					ECAC4D7A30084ECC00F2312C = {
+						CreatedOnToolsVersion = 26.6;
+						TestTargetID = ECAC4D6B30084ECA00F2312C;
+					};
+					ECAC4D8430084ECC00F2312C = {
+						CreatedOnToolsVersion = 26.6;
+						TestTargetID = ECAC4D6B30084ECA00F2312C;
+					};
+				};
+			};
+			buildConfigurationList = ECAC4D6730084ECA00F2312C /* Build configuration list for PBXProject "FieldGuard" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				en,
+				Base,
+			);
+			mainGroup = ECAC4D6330084ECA00F2312C;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = ECAC4D6D30084ECA00F2312C /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				ECAC4D6B30084ECA00F2312C /* FieldGuard */,
+				ECAC4D7A30084ECC00F2312C /* FieldGuardTests */,
+				ECAC4D8430084ECC00F2312C /* FieldGuardUITests */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		ECAC4D6A30084ECA00F2312C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		ECAC4D7930084ECC00F2312C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		ECAC4D8330084ECC00F2312C /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		ECAC4D6830084ECA00F2312C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		ECAC4D7730084ECC00F2312C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		ECAC4D8130084ECC00F2312C /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		ECAC4D7D30084ECC00F2312C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = ECAC4D6B30084ECA00F2312C /* FieldGuard */;
+			targetProxy = ECAC4D7C30084ECC00F2312C /* PBXContainerItemProxy */;
+		};
+		ECAC4D8730084ECC00F2312C /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = ECAC4D6B30084ECA00F2312C /* FieldGuard */;
+			targetProxy = ECAC4D8630084ECC00F2312C /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
+
+/* Begin XCBuildConfiguration section */
+		ECAC4D8D30084ECC00F2312C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = VP4YA9VN28;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		ECAC4D8E30084ECC00F2312C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = VP4YA9VN28;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
+				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		ECAC4D9030084ECC00F2312C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 260704;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "需要相機權限以拍攝工地現場紀錄。";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "需要獲取您所在位置，以便將工地記錄與真實地理座標綁定。";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "需要麥克風權限以進行語音備註輸入。";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "FieldGuard 需要將工地照片儲存到相簿，方便匯出、備份與交付紀錄。";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "FieldGuard 需要存取相簿，讓您可以選取既有現場照片加入工地紀錄或代辦事項。";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "需要語音辨識權限將您的語音轉為文字備註。";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.enoch.Horizon.FieldGuard;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				SUPPORTS_MACCATALYST = YES;
+			};
+			name = Debug;
+		};
+		ECAC4D9130084ECC00F2312C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 260704;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_KEY_NSCameraUsageDescription = "需要相機權限以拍攝工地現場紀錄。";
+				INFOPLIST_KEY_NSLocationWhenInUseUsageDescription = "需要獲取您所在位置，以便將工地記錄與真實地理座標綁定。";
+				INFOPLIST_KEY_NSMicrophoneUsageDescription = "需要麥克風權限以進行語音備註輸入。";
+				INFOPLIST_KEY_NSPhotoLibraryAddUsageDescription = "FieldGuard 需要將工地照片儲存到相簿，方便匯出、備份與交付紀錄。";
+				INFOPLIST_KEY_NSPhotoLibraryUsageDescription = "FieldGuard 需要存取相簿，讓您可以選取既有現場照片加入工地紀錄或代辦事項。";
+				INFOPLIST_KEY_NSSpeechRecognitionUsageDescription = "需要語音辨識權限將您的語音轉為文字備註。";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UILaunchStoryboardName = LaunchScreen;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPad = "UIInterfaceOrientationPortrait UIInterfaceOrientationPortraitUpsideDown UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				INFOPLIST_KEY_UISupportedInterfaceOrientations_iPhone = "UIInterfaceOrientationPortrait UIInterfaceOrientationLandscapeLeft UIInterfaceOrientationLandscapeRight";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 0.1;
+				PRODUCT_BUNDLE_IDENTIFIER = com.enoch.Horizon.FieldGuard;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_DEFAULT_ACTOR_ISOLATION = MainActor;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				SUPPORTS_MACCATALYST = YES;
+			};
+			name = Release;
+		};
+		ECAC4D9330084ECC00F2312C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = Horizon.FieldGuardTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/FieldGuard.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/FieldGuard";
+			};
+			name = Debug;
+		};
+		ECAC4D9430084ECC00F2312C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.5;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = Horizon.FieldGuardTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/FieldGuard.app/$(BUNDLE_EXECUTABLE_FOLDER_PATH)/FieldGuard";
+			};
+			name = Release;
+		};
+		ECAC4D9630084ECC00F2312C /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = Horizon.FieldGuardUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = FieldGuard;
+			};
+			name = Debug;
+		};
+		ECAC4D9730084ECC00F2312C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = YES;
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = Horizon.FieldGuardUITests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				STRING_CATALOG_GENERATE_SYMBOLS = NO;
+				SWIFT_APPROACHABLE_CONCURRENCY = YES;
+				SWIFT_EMIT_LOC_STRINGS = NO;
+				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
+				SWIFT_VERSION = 6.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = FieldGuard;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		ECAC4D6730084ECA00F2312C /* Build configuration list for PBXProject "FieldGuard" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				ECAC4D8D30084ECC00F2312C /* Debug */,
+				ECAC4D8E30084ECC00F2312C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		ECAC4D8F30084ECC00F2312C /* Build configuration list for PBXNativeTarget "FieldGuard" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				ECAC4D9030084ECC00F2312C /* Debug */,
+				ECAC4D9130084ECC00F2312C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		ECAC4D9230084ECC00F2312C /* Build configuration list for PBXNativeTarget "FieldGuardTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				ECAC4D9330084ECC00F2312C /* Debug */,
+				ECAC4D9430084ECC00F2312C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		ECAC4D9530084ECC00F2312C /* Build configuration list for PBXNativeTarget "FieldGuardUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				ECAC4D9630084ECC00F2312C /* Debug */,
+				ECAC4D9730084ECC00F2312C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = ECAC4D6430084ECA00F2312C /* Project object */;
+}

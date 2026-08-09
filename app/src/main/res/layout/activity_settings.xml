@@ -1,0 +1,362 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:app="http://schemas.android.com/apk/res-auto"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:background="#F5F5F5"
+    android:orientation="vertical">
+
+    <!-- Fixed Header Area (Pixel 10 Notch Padding) -->
+    <RelativeLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:paddingStart="72dp"
+        android:paddingEnd="72dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp">
+        <TextView
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_centerVertical="true"
+            android:layout_marginStart="8dp"
+            android:text="Settings"
+            android:textSize="20sp"
+            android:textStyle="bold" />
+        <ImageButton
+            android:id="@+id/btnClose"
+            android:layout_width="48dp"
+            android:layout_height="48dp"
+            android:layout_alignParentEnd="true"
+            android:background="?attr/selectableItemBackgroundBorderless"
+            android:contentDescription="Discard and Exit"
+            android:src="@android:drawable/ic_menu_close_clear_cancel"
+            app:tint="#FF0000" />
+    </RelativeLayout>
+
+    <!-- Fixed Global Status Summary Bar -->
+    <androidx.cardview.widget.CardView
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_marginHorizontal="16dp"
+        android:layout_marginBottom="8dp"
+        app:cardCornerRadius="8dp"
+        app:cardElevation="4dp"
+        app:cardBackgroundColor="#FFFFFF">
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="horizontal"
+            android:padding="12dp"
+            android:baselineAligned="false">
+
+            <!-- Cam 1 Summary -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:gravity="center">
+                <TextView
+                    android:id="@+id/tvStatusSummaryCam1"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="CAM 01"
+                    android:textSize="10sp"
+                    android:textColor="#2196F3"
+                    android:textStyle="bold" />
+                <TextView
+                    android:id="@+id/tvStatusIndicatorsCam1"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="PTZ:●  VID:●"
+                    android:textSize="11sp"
+                    android:textColor="#888888" />
+            </LinearLayout>
+
+            <View
+                android:layout_width="1dp"
+                android:layout_height="match_parent"
+                android:background="#EEEEEE" />
+
+            <!-- Cam 2 Summary -->
+            <LinearLayout
+                android:layout_width="0dp"
+                android:layout_height="wrap_content"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:gravity="center">
+                <TextView
+                    android:id="@+id/tvStatusSummaryCam2"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="CAM 02"
+                    android:textSize="10sp"
+                    android:textColor="#2196F3"
+                    android:textStyle="bold" />
+                <TextView
+                    android:id="@+id/tvStatusIndicatorsCam2"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text="PTZ:●  VID:●"
+                    android:textSize="11sp"
+                    android:textColor="#888888" />
+            </LinearLayout>
+        </LinearLayout>
+    </androidx.cardview.widget.CardView>
+
+    <!-- Tab Navigation -->
+    <com.google.android.material.tabs.TabLayout
+        android:id="@+id/tabLayout"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:background="@android:color/transparent"
+        app:tabIndicatorColor="#2196F3"
+        app:tabSelectedTextColor="#2196F3"
+        app:tabTextColor="#888888"
+        app:tabMode="fixed" />
+
+    <!-- Scrollable Content Area -->
+    <ScrollView
+        android:layout_width="match_parent"
+        android:layout_height="0dp"
+        android:layout_weight="1"
+        android:fillViewport="true">
+
+        <FrameLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content">
+
+            <!-- Cam 1 Page -->
+            <LinearLayout
+                android:id="@+id/layoutCam1Settings"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="visible">
+                <androidx.cardview.widget.CardView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_margin="8dp"
+                    app:cardCornerRadius="8dp"
+                    app:cardElevation="2dp">
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="16dp">
+                        <RelativeLayout android:layout_width="match_parent" android:layout_height="wrap_content">
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Camera 1 Connection" android:textSize="18sp" android:textStyle="bold" android:textColor="#2196F3" android:layout_centerVertical="true" />
+                            <Button android:id="@+id/btnTestCam1" android:layout_width="wrap_content" android:layout_height="36dp" android:text="TEST" android:textSize="10sp" android:backgroundTint="#2196F3" android:textColor="#FFFFFF" android:layout_alignParentEnd="true" android:paddingHorizontal="12dp" />
+                        </RelativeLayout>
+
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Display Name" android:textSize="12sp" android:textColor="#888888" />
+                        <EditText android:id="@+id/editCam1Name" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="e.g., Studio 1" android:imeOptions="actionDone" android:inputType="text" />
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="IP Address" android:textSize="12sp" android:textColor="#888888" />
+                        <EditText android:id="@+id/editCam1Ip" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="192.168.x.x" android:imeOptions="actionDone" android:inputType="text" />
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="RTSP Stream Path" android:textSize="12sp" android:textColor="#888888" />
+                        <EditText android:id="@+id/editCam1RtspPath" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="e.g., /live/av0" android:imeOptions="actionDone" android:inputType="text" />
+
+                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:baselineAligned="false">
+                            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="VISCA Port" android:textSize="12sp" android:textColor="#888888" />
+                                <EditText android:id="@+id/editCam1ControlPort" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="52381" android:inputType="number" android:imeOptions="actionDone" />
+                            </LinearLayout>
+                            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginStart="8dp">
+                                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="RTSP Port" android:textSize="12sp" android:textColor="#888888" />
+                                <EditText android:id="@+id/editCam1RtspPort" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="554" android:inputType="number" android:imeOptions="actionDone" />
+                            </LinearLayout>
+                        </LinearLayout>
+
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Login Account" android:textSize="12sp" android:textColor="#888888" />
+                        <EditText android:id="@+id/editCam1Account" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="admin" android:imeOptions="actionDone" android:inputType="text" />
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Login Password" android:textSize="12sp" android:textColor="#888888" />
+                        <EditText android:id="@+id/editCam1Password" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="password" android:inputType="textPassword" android:imeOptions="actionDone" />
+
+                        <androidx.appcompat.widget.SwitchCompat android:id="@+id/switchCam1Tcp" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Use RTSP Over TCP" android:checked="true" />
+                        <androidx.appcompat.widget.SwitchCompat android:id="@+id/switchCam1ShowPort" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Include Port in RTSP URL" />
+                        <androidx.appcompat.widget.SwitchCompat android:id="@+id/switchCam1AutoConnect" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Auto-Connect on Startup" android:checked="true" />
+
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Stream Quality" android:textSize="12sp" android:textColor="#888888" />
+                        <Spinner android:id="@+id/spinnerCam1Quality" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" />
+
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Video Engine" android:textSize="12sp" android:textColor="#888888" />
+                        <Spinner android:id="@+id/spinnerCam1Engine" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" />
+
+                        <TextView android:id="@+id/tvCam1Url" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:background="#EEEEEE" android:padding="8dp" android:text="rtsp://..." android:textSize="10sp" android:fontFamily="monospace" android:textColor="#666666" />
+                    </LinearLayout>
+                </androidx.cardview.widget.CardView>
+            </LinearLayout>
+
+            <!-- Cam 2 Page -->
+            <LinearLayout
+                android:id="@+id/layoutCam2Settings"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone">
+                <androidx.cardview.widget.CardView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_margin="8dp"
+                    app:cardCornerRadius="8dp"
+                    app:cardElevation="2dp">
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="16dp">
+                        <RelativeLayout android:layout_width="match_parent" android:layout_height="wrap_content">
+                            <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Camera 2 Connection" android:textSize="18sp" android:textStyle="bold" android:textColor="#2196F3" android:layout_centerVertical="true" />
+                            <Button android:id="@+id/btnTestCam2" android:layout_width="wrap_content" android:layout_height="36dp" android:text="TEST" android:textSize="10sp" android:backgroundTint="#2196F3" android:textColor="#FFFFFF" android:layout_alignParentEnd="true" android:paddingHorizontal="12dp" />
+                        </RelativeLayout>
+
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Display Name" android:textSize="12sp" android:textColor="#888888" />
+                        <EditText android:id="@+id/editCam2Name" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="e.g., Studio 2" android:imeOptions="actionDone" android:inputType="text" />
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="IP Address" android:textSize="12sp" android:textColor="#888888" />
+                        <EditText android:id="@+id/editCam2Ip" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="192.168.x.x" android:imeOptions="actionDone" android:inputType="text" />
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="RTSP Stream Path" android:textSize="12sp" android:textColor="#888888" />
+                        <EditText android:id="@+id/editCam2RtspPath" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="e.g., /live/av0" android:imeOptions="actionDone" android:inputType="text" />
+                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal" android:baselineAligned="false">
+                            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical">
+                                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="VISCA Port" android:textSize="12sp" android:textColor="#888888" />
+                                <EditText android:id="@+id/editCam2ControlPort" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="52381" android:inputType="number" android:imeOptions="actionDone" />
+                            </LinearLayout>
+                            <LinearLayout android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:orientation="vertical" android:layout_marginStart="8dp">
+                                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="RTSP Port" android:textSize="12sp" android:textColor="#888888" />
+                                <EditText android:id="@+id/editCam2RtspPort" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="554" android:inputType="number" android:imeOptions="actionDone" />
+                            </LinearLayout>
+                        </LinearLayout>
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Login Account" android:textSize="12sp" android:textColor="#888888" />
+                        <EditText android:id="@+id/editCam2Account" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="admin" android:imeOptions="actionDone" android:inputType="text" />
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Login Password" android:textSize="12sp" android:textColor="#888888" />
+                        <EditText android:id="@+id/editCam2Password" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="password" android:inputType="textPassword" android:imeOptions="actionDone" />
+                        <androidx.appcompat.widget.SwitchCompat android:id="@+id/switchCam2Tcp" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Use RTSP Over TCP" android:checked="true" />
+                        <androidx.appcompat.widget.SwitchCompat android:id="@+id/switchCam2ShowPort" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Include Port in RTSP URL" />
+                        <androidx.appcompat.widget.SwitchCompat android:id="@+id/switchCam2AutoConnect" android:layout_width="match_parent" android:layout_height="wrap_content" android:text="Auto-Connect on Startup" android:checked="true" />
+
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Stream Quality" android:textSize="12sp" android:textColor="#888888" />
+                        <Spinner android:id="@+id/spinnerCam2Quality" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" />
+
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Video Engine" android:textSize="12sp" android:textColor="#888888" />
+                        <Spinner android:id="@+id/spinnerCam2Engine" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="4dp" />
+
+                        <TextView android:id="@+id/tvCam2Url" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:background="#EEEEEE" android:padding="8dp" android:text="rtsp://..." android:textSize="10sp" android:fontFamily="monospace" android:textColor="#666666" />
+                    </LinearLayout>
+                </androidx.cardview.widget.CardView>
+            </LinearLayout>
+
+            <!-- Joysticks Page -->
+            <LinearLayout
+                android:id="@+id/layoutJoystickSettings"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="vertical"
+                android:visibility="gone">
+                <androidx.cardview.widget.CardView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_margin="8dp"
+                    app:cardCornerRadius="8dp"
+                    app:cardElevation="2dp">
+                    <LinearLayout
+                        android:layout_width="match_parent"
+                        android:layout_height="wrap_content"
+                        android:orientation="vertical"
+                        android:padding="16dp">
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="General Controls" android:textSize="18sp" android:textStyle="bold" android:textColor="#2196F3" />
+
+                        <androidx.appcompat.widget.SwitchCompat android:id="@+id/switchVirtualJoystick" android:layout_width="match_parent" android:layout_height="wrap_content" android:layout_marginTop="8dp" android:text="Enable Virtual Joystick" />
+
+                        <!-- Interactive Binding & Preview Group -->
+                        <LinearLayout
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:orientation="horizontal"
+                            android:layout_marginTop="16dp"
+                            android:baselineAligned="false">
+
+                            <!-- Left Stick Column -->
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:orientation="vertical"
+                                android:gravity="center">
+                                <com.horizon.horizonptz.ui.VirtualJoystickView
+                                    android:id="@+id/previewJoystickL"
+                                    android:layout_width="80dp"
+                                    android:layout_height="80dp" />
+                                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Mapped L-Stick" android:textSize="10sp" android:textColor="#888888" android:layout_marginTop="4dp" />
+
+                                <Button android:id="@+id/btnBindLX" android:layout_width="match_parent" android:layout_height="36dp" android:layout_marginTop="8dp" android:text="Bind LX" android:textSize="10sp" style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+                                <Button android:id="@+id/btnBindLY" android:layout_width="match_parent" android:layout_height="36dp" android:layout_marginTop="4dp" android:text="Bind LY" android:textSize="10sp" style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+                            </LinearLayout>
+
+                            <View android:layout_width="16dp" android:layout_height="1dp" />
+
+                            <!-- Right Stick Column -->
+                            <LinearLayout
+                                android:layout_width="0dp"
+                                android:layout_height="wrap_content"
+                                android:layout_weight="1"
+                                android:orientation="vertical"
+                                android:gravity="center">
+                                <com.horizon.horizonptz.ui.VirtualJoystickView
+                                    android:id="@+id/previewJoystickR"
+                                    android:layout_width="80dp"
+                                    android:layout_height="80dp" />
+                                <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Mapped R-Stick" android:textSize="10sp" android:textColor="#888888" android:layout_marginTop="4dp" />
+
+                                <Button android:id="@+id/btnBindRX" android:layout_width="match_parent" android:layout_height="36dp" android:layout_marginTop="8dp" android:text="Bind RX" android:textSize="10sp" style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+                                <Button android:id="@+id/btnBindRY" android:layout_width="match_parent" android:layout_height="36dp" android:layout_marginTop="4dp" android:text="Bind RY" android:textSize="10sp" style="@style/Widget.MaterialComponents.Button.OutlinedButton" />
+                            </LinearLayout>
+                        </LinearLayout>
+
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="Stick Sensitivity (Expo)" android:textSize="12sp" android:textColor="#888888" />
+                        <SeekBar android:id="@+id/seekExpo" android:layout_width="match_parent" android:layout_height="wrap_content" android:max="30" android:progress="15" />
+
+                        <TextView
+                            android:id="@+id/tvActiveAxis"
+                            android:layout_width="match_parent"
+                            android:layout_height="wrap_content"
+                            android:layout_marginTop="8dp"
+                            android:text="All systems ready"
+                            android:textSize="10sp"
+                            android:textColor="#888888"
+                            android:gravity="center"
+                            android:fontFamily="monospace" />
+
+                        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="Button Shortcuts" android:textSize="12sp" android:textColor="#888888" />
+                        <LinearLayout android:layout_width="match_parent" android:layout_height="wrap_content" android:orientation="horizontal">
+                            <Button android:id="@+id/btnBindC1P1" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="C1-P1" android:textSize="10sp" />
+                            <Button android:id="@+id/btnBindC1P2" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="C1-P2" android:textSize="10sp" />
+                            <Button android:id="@+id/btnBindC2P1" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="C2-P1" android:textSize="10sp" />
+                            <Button android:id="@+id/btnBindC2P2" android:layout_width="0dp" android:layout_height="wrap_content" android:layout_weight="1" android:text="C2-P2" android:textSize="10sp" />
+                        </LinearLayout>
+                    </LinearLayout>
+                </androidx.cardview.widget.CardView>
+
+                <TextView
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:text="Scroll down for more ▼"
+                    android:gravity="center"
+                    android:textSize="10sp"
+                    android:textColor="#AAAAAA"
+                    android:padding="8dp" />
+            </LinearLayout>
+        </FrameLayout>
+    </ScrollView>
+
+    <!-- Footer Action Bar -->
+    <Button
+        android:id="@+id/btnSave"
+        android:layout_width="match_parent"
+        android:layout_height="56dp"
+        android:layout_margin="16dp"
+        android:text="SAVE AND RECONNECT"
+        android:backgroundTint="#4CAF50"
+        android:textColor="#FFFFFF"
+        android:textStyle="bold" />
+
+</LinearLayout>

@@ -24,7 +24,7 @@ class PersonTracker {
     private var trackedPeople: [InternalTrackedPerson] = []
     private var featureGallery: [Int: VNFeaturePrintObservation] = [:]
     private var nextId = 1
-    private let maxDisappeared = 30 // Holds detections across temporary movements to keep count rock-steady!
+    private let maxDisappeared = 30 // Holds tracked IDs across temporary movements to keep count steady!
     private let minConfirmedFrames = 2 // Anti-flicker: Must persist 2 frames to eliminate noise
     
     func update(with newBoxes: [CGRect], cgImage: CGImage, distThreshold: CGFloat, alpha: CGFloat, isReIdEnabled: Bool, reIdSimilarity: Float) -> [(id: Int, box: CGRect)] {
@@ -193,8 +193,8 @@ class PeopleCounterService: ObservableObject {
     static let shared = PeopleCounterService()
     
     @Published var currentEngineMode: AiEngineMode = .coreMLYolo
-    @Published var confidenceThreshold: Float = 0.05
-    @Published var minObjectSize: Float = 0.002
+    @Published var confidenceThreshold: Float = 0.08
+    @Published var minObjectSize: Float = 0.003
     @Published var samplingFps: Int = 10
     @Published var trackingAlpha: Float = 0.85
     @Published var maxMotionDistance: Float = 0.38
@@ -277,34 +277,60 @@ class PeopleCounterService: ObservableObject {
     private func runMultiScaleInference(cgImage: CGImage) -> [CGRect] {
         var rawBoxes: [CGRect] = []
         
-        // Pass 1: Global Full Body & Upper Body Pass
+        // 1. Deep Learning Pose Request (Extracts anatomical keypoints: Nose, Shoulders, Hips)
+        let poseReq = VNDetectHumanBodyPoseRequest()
         let reqFull = VNDetectHumanRectanglesRequest()
         reqFull.upperBodyOnly = false
-        let reqUpper = VNDetectHumanRectanglesRequest()
-        reqUpper.upperBodyOnly = true
         let reqFace = VNDetectFaceRectanglesRequest()
         
         let h1 = VNImageRequestHandler(cgImage: cgImage, options: [:])
-        try? h1.perform([reqFull, reqUpper, reqFace])
+        try? h1.perform([poseReq, reqFull, reqFace])
+        
+        // Process Body Poses (Guarantees 1 Box per Speaker!)
+        for obs in (poseReq.results ?? []) {
+            if let points = try? obs.recognizedPoints(forGroupKey: .all) {
+                let validPoints = points.values.filter { $0.confidence > 0.15 }
+                if validPoints.count >= 2 {
+                    let xs = validPoints.map { CGFloat($0.location.x) }
+                    let ys = validPoints.map { CGFloat($0.location.y) }
+                    
+                    let minX = xs.min()!
+                    let maxX = xs.max()!
+                    let minY = ys.min()!
+                    let maxY = ys.max()!
+                    
+                    let padX: CGFloat = 0.05
+                    let padY: CGFloat = 0.08
+                    
+                    let box = CGRect(
+                        x: max(0, minX - padX),
+                        y: max(0, minY - padY),
+                        width: min(1.0, (maxX - minX) + padX * 2),
+                        height: min(1.0, (maxY - minY) + padY * 2)
+                    )
+                    rawBoxes.append(box)
+                }
+            }
+        }
         
         for r in (reqFull.results ?? []) {
-            if r.confidence >= self.confidenceThreshold { rawBoxes.append(r.boundingBox) }
+            if r.confidence >= self.confidenceThreshold {
+                rawBoxes.append(r.boundingBox)
+            }
         }
-        for r in (reqUpper.results ?? []) {
-            if r.confidence >= self.confidenceThreshold { rawBoxes.append(r.boundingBox) }
-        }
+        
         for f in (reqFace.results ?? []) {
             if f.confidence >= self.confidenceThreshold {
                 let b = f.boundingBox
-                let headBox = CGRect(x: max(0, b.origin.x - b.width*0.3),
-                                     y: max(0, b.origin.y - b.height*0.3),
-                                     width: min(1.0 - b.origin.x, b.width * 1.6),
-                                     height: min(1.0 - b.origin.y, b.height * 2.0))
+                let headBox = CGRect(x: max(0, b.origin.x - b.width*0.25),
+                                     y: max(0, b.origin.y - b.height*0.25),
+                                     width: min(1.0 - b.origin.x, b.width * 1.5),
+                                     height: min(1.0 - b.origin.y, b.height * 1.9))
                 rawBoxes.append(headBox)
             }
         }
         
-        // Pass 2: 4x4 Multi-scale Grid Tiling (Extremely Sensitive for Dense Audience Seating)
+        // Pass 2: 4x4 Multi-scale Grid Tiling (Extremely Sensitive for Seated Audience Crowd)
         let cols = 4
         let rows = 4
         let tileW = cgImage.width / cols
@@ -315,20 +341,39 @@ class PeopleCounterService: ObservableObject {
                 let tileRect = CGRect(x: c * tileW, y: r * tileH, width: tileW, height: tileH)
                 guard let tileCg = cgImage.cropping(to: tileRect) else { continue }
                 
-                // Audience seating area is bottom 3 rows (r <= 2) in Vision y-up space
+                // Audience seating is bottom 3 rows (r <= 2 in Vision y-up space)
                 let isAudienceArea = (r <= 2)
-                let tileThresh: Float = isAudienceArea ? 0.012 : self.confidenceThreshold
+                let tileThresh: Float = isAudienceArea ? 0.015 : self.confidenceThreshold
                 
+                let tPose = VNDetectHumanBodyPoseRequest()
                 let tFull = VNDetectHumanRectanglesRequest()
                 tFull.upperBodyOnly = false
-                let tUpper = VNDetectHumanRectanglesRequest()
-                tUpper.upperBodyOnly = true
                 let tFace = VNDetectFaceRectanglesRequest()
                 
                 let th = VNImageRequestHandler(cgImage: tileCg, options: [:])
-                try? th.perform([tFull, tUpper, tFace])
+                try? th.perform([tPose, tFull, tFace])
                 
-                for res in (tFull.results ?? []) + (tUpper.results ?? []) {
+                for obs in (tPose.results ?? []) {
+                    if let points = try? obs.recognizedPoints(forGroupKey: .all) {
+                        let validPoints = points.values.filter { $0.confidence > 0.15 }
+                        if validPoints.count >= 2 {
+                            let xs = validPoints.map { CGFloat($0.location.x) }
+                            let ys = validPoints.map { CGFloat($0.location.y) }
+                            let minX = xs.min()!
+                            let maxX = xs.max()!
+                            let minY = ys.min()!
+                            let maxY = ys.max()!
+                            
+                            let normX = (CGFloat(c * tileW) + minX * CGFloat(tileW)) / CGFloat(cgImage.width)
+                            let normY = (CGFloat(r * tileH) + minY * CGFloat(tileH)) / CGFloat(cgImage.height)
+                            let normW = ((maxX - minX) * CGFloat(tileW)) / CGFloat(cgImage.width)
+                            let normH = ((maxY - minY) * CGFloat(tileH)) / CGFloat(cgImage.height)
+                            rawBoxes.append(CGRect(x: normX, y: normY, width: max(0.04, normW), height: max(0.08, normH)))
+                        }
+                    }
+                }
+                
+                for res in (tFull.results ?? []) {
                     if res.confidence >= tileThresh {
                         let b = res.boundingBox
                         let normX = (CGFloat(c * tileW) + b.origin.x * CGFloat(tileW)) / CGFloat(cgImage.width)
@@ -342,10 +387,10 @@ class PeopleCounterService: ObservableObject {
                 for f in (tFace.results ?? []) {
                     if f.confidence >= tileThresh {
                         let b = f.boundingBox
-                        let normX = (CGFloat(c * tileW) + (b.origin.x - b.width*0.3) * CGFloat(tileW)) / CGFloat(cgImage.width)
-                        let normY = (CGFloat(r * tileH) + (b.origin.y - b.height*0.3) * CGFloat(tileH)) / CGFloat(cgImage.height)
-                        let normW = (b.width * 1.6 * CGFloat(tileW)) / CGFloat(cgImage.width)
-                        let normH = (b.height * 2.0 * CGFloat(tileH)) / CGFloat(cgImage.height)
+                        let normX = (CGFloat(c * tileW) + (b.origin.x - b.width*0.25) * CGFloat(tileW)) / CGFloat(cgImage.width)
+                        let normY = (CGFloat(r * tileH) + (b.origin.y - b.height*0.25) * CGFloat(tileH)) / CGFloat(cgImage.height)
+                        let normW = (b.width * 1.5 * CGFloat(tileW)) / CGFloat(cgImage.width)
+                        let normH = (b.height * 1.9 * CGFloat(tileH)) / CGFloat(cgImage.height)
                         rawBoxes.append(CGRect(x: normX, y: normY, width: normW, height: normH))
                     }
                 }
@@ -359,15 +404,18 @@ class PeopleCounterService: ObservableObject {
         let minArea = CGFloat(self.minObjectSize) // 0.002
         
         // Rule A: Exclude top ceiling wall area (y + height >= 0.82 in Vision y-up space)
-        // Also filter out extreme pole aspect ratios (thin camera/mic poles where width/height < 0.12 or width/height > 2.2)
+        // Filter out extreme poles (door frames / mic stands) where width/height < 0.15 or width/height > 2.2
         let validBoxes = inputBoxes.filter { b in
             let area = b.width * b.height
             let aspectRatio = b.width / b.height
-            return area >= minArea && b.origin.y + b.height < 0.82 && aspectRatio >= 0.15 && aspectRatio <= 2.0
+            
+            // Exclude door frames on left wall (x < 0.08 and y > 0.50)
+            let isDoorFrame = (b.origin.x < 0.08 && b.origin.y > 0.45 && b.height > 0.25)
+            
+            return area >= minArea && b.origin.y + b.height < 0.82 && aspectRatio >= 0.15 && aspectRatio <= 2.2 && !isDoorFrame
         }
         
-        // Rule B: Aggressive Body & Microphone Enclosing Box Fusion
-        // If Box B (mic, chest, belt) is inside or overlaps with Box A (body), ABSORB EVERYTHING INTO ONE SINGLE SPEAKER BOX!
+        // Rule B: Single Speaker Anatomical Column Fusion (Merges mic, chest, belt into EXACTLY 1 SPEAKER BOX!)
         var mergedBoxes: [CGRect] = []
         let sortedByArea = validBoxes.sorted { ($0.width * $0.height) > ($1.width * $1.height) }
         
@@ -380,14 +428,9 @@ class PeopleCounterService: ObservableObject {
                 let maxW = max(b.width, existing.width)
                 let maxH = max(b.height, existing.height)
                 
-                // Center inside check (mic, chest, belt inside body)
                 let isCenterInside = existing.contains(CGPoint(x: b.midX, y: b.midY)) || b.contains(CGPoint(x: existing.midX, y: existing.midY))
-                
-                // Same vertical human column check (centerDx < 50% maxW & centerDy < 85% maxH)
-                let isSameColumn = (centerDx < maxW * 0.50 && centerDy < maxH * 0.85)
-                
-                // IoU overlap check (> 30%)
-                let isOverlapping = !intersection.isNull && (intersection.width * intersection.height / (b.width * b.height) > 0.30)
+                let isSameColumn = (centerDx < maxW * 0.55 && centerDy < maxH * 0.90)
+                let isOverlapping = !intersection.isNull && (intersection.width * intersection.height / (b.width * b.height) > 0.25)
                 
                 if isCenterInside || isSameColumn || isOverlapping {
                     absorbedIdx = idx

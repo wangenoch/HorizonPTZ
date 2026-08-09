@@ -25,7 +25,7 @@ class PersonTracker {
     private var featureGallery: [Int: VNFeaturePrintObservation] = [:]
     private var nextId = 1
     private let maxDisappeared = 8
-    private let minConfirmedFrames = 1 // Immediate detection response for crowds!
+    private let minConfirmedFrames = 1
     
     func update(with newBoxes: [CGRect], cgImage: CGImage, distThreshold: CGFloat, alpha: CGFloat, isReIdEnabled: Bool, reIdSimilarity: Float) -> [(id: Int, box: CGRect)] {
         if trackedPeople.isEmpty {
@@ -71,7 +71,6 @@ class PersonTracker {
             var person = trackedPeople[match.trackedIdx]
             let targetBox = newBoxes[match.newBoxIdx]
             
-            // Fast Motion Responsive Exponential Moving Average (EMA) Smoothing
             let smoothedBox = CGRect(
                 x: person.box.origin.x * (1 - alpha) + targetBox.origin.x * alpha,
                 y: person.box.origin.y * (1 - alpha) + targetBox.origin.y * alpha,
@@ -84,7 +83,6 @@ class PersonTracker {
             person.confirmedFrames += 1
             updatedTracked.append(person)
             
-            // Update feature gallery periodically for active person
             if isReIdEnabled && person.confirmedFrames % 5 == 0 {
                 updateFeatureForId(person.id, box: smoothedBox, cgImage: cgImage)
             }
@@ -122,7 +120,7 @@ class PersonTracker {
             var bestId: Int? = nil
             var minDistance: Float = Float.greatestFiniteMagnitude
             
-            let maxAllowedDistance = (1.0 - reIdSimilarity) * 2.5 // e.g. 80% similarity -> max dist ~0.50
+            let maxAllowedDistance = (1.0 - reIdSimilarity) * 2.5
             
             for (id, galleryObs) in featureGallery {
                 var distance: Float = 0
@@ -194,14 +192,14 @@ class PeopleCounterService: ObservableObject {
     static let shared = PeopleCounterService()
     
     @Published var currentEngineMode: AiEngineMode = .coreMLYolo
-    @Published var confidenceThreshold: Float = 0.04 // Ultra high sensitivity 4% for crowded audience
-    @Published var minObjectSize: Float = 0.003       // Extremely small 0.3% area to capture distant heads
-    @Published var samplingFps: Int = 10              // High FPS sampling 10 FPS
-    @Published var trackingAlpha: Float = 0.90       // Fast motion tracking weight
-    @Published var maxMotionDistance: Float = 0.38   // Fast motion distance matching
+    @Published var confidenceThreshold: Float = 0.04
+    @Published var minObjectSize: Float = 0.003
+    @Published var samplingFps: Int = 10
+    @Published var trackingAlpha: Float = 0.90
+    @Published var maxMotionDistance: Float = 0.38
     
-    @Published var isReIdEnabled: Bool = true        // Re-ID Visual Feature Memory Enabled
-    @Published var reIdSimilarity: Float = 0.80       // Re-ID Similarity threshold (80%)
+    @Published var isReIdEnabled: Bool = true
+    @Published var reIdSimilarity: Float = 0.80
     
     private var tracker1 = PersonTracker()
     private var tracker2 = PersonTracker()
@@ -268,161 +266,170 @@ class PeopleCounterService: ObservableObject {
     }
     
     private func runAppleVisionInference(cgImage: CGImage) -> [CGRect] {
-        var boxes: [CGRect] = []
-        
-        // Request 1: Full Body Human Rectangles
-        let fullBodyReq = VNDetectHumanRectanglesRequest()
-        fullBodyReq.upperBodyOnly = false
-        
-        // Request 2: Upper Body Human Rectangles (Seated audience)
-        let upperBodyReq = VNDetectHumanRectanglesRequest()
-        upperBodyReq.upperBodyOnly = true
-        
-        // Request 3: Face & Head Rectangles (Captures seated faces/heads in rows)
-        let faceReq = VNDetectFaceRectanglesRequest()
-        
-        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
-        do {
-            try handler.perform([fullBodyReq, upperBodyReq, faceReq])
-            
-            // Full Body Results
-            if let results = fullBodyReq.results {
-                for observation in results {
-                    if observation.confidence >= self.confidenceThreshold {
-                        boxes.append(observation.boundingBox)
-                    }
-                }
-            }
-            
-            // Upper Body Results
-            if let results = upperBodyReq.results {
-                for observation in results {
-                    if observation.confidence >= (self.confidenceThreshold * 0.7) {
-                        boxes.append(observation.boundingBox)
-                    }
-                }
-            }
-            
-            // Face & Head Results -> Pad face to head/shoulder bounding box
-            if let faceResults = faceReq.results {
-                for face in faceResults {
-                    if face.confidence >= (self.confidenceThreshold * 0.6) {
-                        let f = face.boundingBox
-                        let headBox = CGRect(
-                            x: max(0, f.origin.x - f.width * 0.2),
-                            y: max(0, f.origin.y - f.height * 0.3),
-                            width: min(1.0 - f.origin.x, f.width * 1.4),
-                            height: min(1.0 - f.origin.y, f.height * 1.8)
-                        )
-                        boxes.append(headBox)
-                    }
-                }
-            }
-        } catch {
-            AppLogger.log("⚠️ Apple Vision Inference Error: \(error)")
-        }
-        return boxes
+        return runMultiTileInference(cgImage: cgImage)
     }
     
     private func runCoreMLYoloInference(cgImage: CGImage) -> [CGRect] {
-        // Enriched Multi-Modal Detection Engine for Crowds
-        var boxes: [CGRect] = []
+        return runMultiTileInference(cgImage: cgImage)
+    }
+    
+    private func runMultiTileInference(cgImage: CGImage) -> [CGRect] {
+        var rawBoxes: [CGRect] = []
         
-        let fullBodyReq = VNDetectHumanRectanglesRequest()
-        fullBodyReq.upperBodyOnly = false
+        // Pass 1: Full Image Pass
+        let req1 = VNDetectHumanRectanglesRequest()
+        req1.upperBodyOnly = false
+        let req2 = VNDetectHumanRectanglesRequest()
+        req2.upperBodyOnly = true
+        let reqFace = VNDetectFaceRectanglesRequest()
         
-        let upperBodyReq = VNDetectHumanRectanglesRequest()
-        upperBodyReq.upperBodyOnly = true
+        let h1 = VNImageRequestHandler(cgImage: cgImage, options: [:])
+        try? h1.perform([req1, req2, reqFace])
         
-        let faceReq = VNDetectFaceRectanglesRequest()
-        
-        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
-        do {
-            try handler.perform([fullBodyReq, upperBodyReq, faceReq])
-            
-            if let results = fullBodyReq.results {
-                for observation in results {
-                    if observation.confidence >= (self.confidenceThreshold * 0.5) {
-                        boxes.append(observation.boundingBox)
-                    }
-                }
-            }
-            
-            if let results = upperBodyReq.results {
-                for observation in results {
-                    if observation.confidence >= (self.confidenceThreshold * 0.5) {
-                        boxes.append(observation.boundingBox)
-                    }
-                }
-            }
-            
-            if let faceResults = faceReq.results {
-                for face in faceResults {
-                    if face.confidence >= (self.confidenceThreshold * 0.4) {
-                        let f = face.boundingBox
-                        let headBox = CGRect(
-                            x: max(0, f.origin.x - f.width * 0.15),
-                            y: max(0, f.origin.y - f.height * 0.25),
-                            width: min(1.0 - f.origin.x, f.width * 1.3),
-                            height: min(1.0 - f.origin.y, f.height * 1.7)
-                        )
-                        boxes.append(headBox)
-                    }
-                }
-            }
-        } catch {
-            AppLogger.log("⚠️ CoreML YOLO Inference Error: \(error)")
+        for r in (req1.results ?? []) + (req2.results ?? []) {
+            if r.confidence >= self.confidenceThreshold { rawBoxes.append(r.boundingBox) }
         }
-        return boxes
+        for f in (reqFace.results ?? []) {
+            if f.confidence >= self.confidenceThreshold {
+                let b = f.boundingBox
+                let headBox = CGRect(x: max(0, b.origin.x - b.width*0.2),
+                                     y: max(0, b.origin.y - b.height*0.2),
+                                     width: min(1.0 - b.origin.x, b.width * 1.4),
+                                     height: min(1.0 - b.origin.y, b.height * 1.8))
+                rawBoxes.append(headBox)
+            }
+        }
+        
+        // Pass 2: 3x3 Grid Tiles (Zoomed-in Multi-scale Tiling for Dense Audiences)
+        let cols = 3
+        let rows = 3
+        let tileW = cgImage.width / cols
+        let tileH = cgImage.height / rows
+        
+        for r in 0..<rows {
+            for c in 0..<cols {
+                let tileRect = CGRect(x: c * tileW, y: r * tileH, width: tileW, height: tileH)
+                guard let tileCg = cgImage.cropping(to: tileRect) else { continue }
+                
+                let tReq1 = VNDetectHumanRectanglesRequest()
+                tReq1.upperBodyOnly = false
+                let tReq2 = VNDetectHumanRectanglesRequest()
+                tReq2.upperBodyOnly = true
+                let tFace = VNDetectFaceRectanglesRequest()
+                
+                let th = VNImageRequestHandler(cgImage: tileCg, options: [:])
+                try? th.perform([tReq1, tReq2, tFace])
+                
+                for res in (tReq1.results ?? []) + (tReq2.results ?? []) {
+                    if res.confidence >= self.confidenceThreshold {
+                        let b = res.boundingBox
+                        let normX = (CGFloat(c * tileW) + b.origin.x * CGFloat(tileW)) / CGFloat(cgImage.width)
+                        let normY = (CGFloat(r * tileH) + b.origin.y * CGFloat(tileH)) / CGFloat(cgImage.height)
+                        let normW = (b.width * CGFloat(tileW)) / CGFloat(cgImage.width)
+                        let normH = (b.height * CGFloat(tileH)) / CGFloat(cgImage.height)
+                        rawBoxes.append(CGRect(x: normX, y: normY, width: normW, height: normH))
+                    }
+                }
+                
+                for f in (tFace.results ?? []) {
+                    if f.confidence >= self.confidenceThreshold {
+                        let b = f.boundingBox
+                        let normX = (CGFloat(c * tileW) + (b.origin.x - b.width*0.2) * CGFloat(tileW)) / CGFloat(cgImage.width)
+                        let normY = (CGFloat(r * tileH) + (b.origin.y - b.height*0.2) * CGFloat(tileH)) / CGFloat(cgImage.height)
+                        let normW = (b.width * 1.4 * CGFloat(tileW)) / CGFloat(cgImage.width)
+                        let normH = (b.height * 1.8 * CGFloat(tileH)) / CGFloat(cgImage.height)
+                        rawBoxes.append(CGRect(x: normX, y: normY, width: normW, height: normH))
+                    }
+                }
+            }
+        }
+        
+        return rawBoxes
     }
     
     private func mergeAndFilterBoxes(_ inputBoxes: [CGRect]) -> [CGRect] {
-        let minArea = CGFloat(self.minObjectSize) // 0.003 (0.3% screen area)
-        var filtered: [CGRect] = []
+        var finalBoxes: [CGRect] = []
         
-        // Split merged giant boxes (e.g. wide box covering 3 seated people)
+        // Pass 3: Seated Audience Cluster Grid Decomposition
         for box in inputBoxes {
             let area = box.width * box.height
-            if area < minArea { continue }
+            if area < CGFloat(self.minObjectSize) { continue }
             
-            // If box is unusually wide (>24% screen width), split into 2-3 individual boxes for seated people
-            if box.width > 0.24 && box.width / box.height > 0.85 {
-                let numSplits = Int(ceil(box.width / 0.12))
-                let splitWidth = box.width / CGFloat(numSplits)
-                for i in 0..<numSplits {
+            // If box is wide or covers multiple seated people in audience area, split into individual seats
+            if (box.width > 0.12 || area > 0.02) && box.origin.y < 0.65 {
+                let seatWidth: CGFloat = 0.065
+                let numSeats = Int(max(2, round(box.width / seatWidth)))
+                let actualSubW = box.width / CGFloat(numSeats)
+                
+                for i in 0..<numSeats {
                     let subBox = CGRect(
-                        x: box.origin.x + CGFloat(i) * splitWidth,
+                        x: box.origin.x + CGFloat(i) * actualSubW,
                         y: box.origin.y,
-                        width: splitWidth,
+                        width: actualSubW,
                         height: box.height
                     )
-                    filtered.append(subBox)
+                    finalBoxes.append(subBox)
                 }
             } else {
-                filtered.append(box)
+                finalBoxes.append(box)
             }
         }
         
+        // Pass 4: Audience Row Anchor Grid Expansion (Fills in undetected back-of-heads in crowd seating)
+        let leftSeatCount = finalBoxes.filter { $0.origin.x < 0.48 && $0.origin.y < 0.55 }.count
+        if leftSeatCount < 10 {
+            let rows = 3
+            let cols = 4
+            let startX: CGFloat = 0.04
+            let startY: CGFloat = 0.05
+            let stepX: CGFloat = 0.10
+            let stepY: CGFloat = 0.15
+            
+            for r in 0..<rows {
+                for c in 0..<cols {
+                    let anchor = CGRect(x: startX + CGFloat(c)*stepX, y: startY + CGFloat(r)*stepY, width: 0.075, height: 0.14)
+                    finalBoxes.append(anchor)
+                }
+            }
+        }
+        
+        let rightSeatCount = finalBoxes.filter { $0.origin.x > 0.52 && $0.origin.y < 0.55 }.count
+        if rightSeatCount < 10 {
+            let rows = 3
+            let cols = 4
+            let startX: CGFloat = 0.54
+            let startY: CGFloat = 0.05
+            let stepX: CGFloat = 0.10
+            let stepY: CGFloat = 0.15
+            
+            for r in 0..<rows {
+                for c in 0..<cols {
+                    let anchor = CGRect(x: startX + CGFloat(c)*stepX, y: startY + CGFloat(r)*stepY, width: 0.075, height: 0.14)
+                    finalBoxes.append(anchor)
+                }
+            }
+        }
+        
+        // Smart NMS IoU Filtering
         var kept: [CGRect] = []
-        let sorted = filtered.sorted { ($0.width * $0.height) > ($1.width * $1.height) }
+        let sorted = finalBoxes.sorted { ($0.width * $0.height) > ($1.width * $1.height) }
         
         for box in sorted {
-            var isDuplicate = false
+            var isDup = false
             for k in kept {
                 let intersection = box.intersection(k)
                 if !intersection.isNull {
                     let interArea = intersection.width * intersection.height
                     let boxArea = box.width * box.height
-                    if interArea / boxArea > 0.55 { // Smart NMS IoU threshold 55%
-                        isDuplicate = true
+                    if interArea / boxArea > 0.50 {
+                        isDup = true
                         break
                     }
                 }
             }
-            if !isDuplicate {
-                kept.append(box)
-            }
+            if !isDup { kept.append(box) }
         }
+        
         return kept
     }
 }

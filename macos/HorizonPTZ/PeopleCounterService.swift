@@ -290,17 +290,15 @@ class PeopleCounterService: ObservableObject {
             }
         }
         
-        // 3. Filter out invalid wall regions
+        // 3. Filter out invalid wall regions (Ceiling, Door Frame, Tripod)
         let validBoxes = rawBoxes.filter { b in
             let area = b.width * b.height
             let isDoorFrame = (b.origin.x < 0.08 && b.origin.y > 0.40)
             let isCeiling = (b.origin.y + b.height >= 0.88)
             let isTripod = (b.midX > 0.44 && b.midX < 0.54 && b.midY > 0.20 && b.midY < 0.55 && b.width < 0.20)
-            let isRightWall = (b.origin.x > 0.78)
-            let isCenterWallBox6 = (b.origin.x > 0.55 && b.origin.x < 0.75 && b.origin.y > 0.50 && b.origin.y < 0.75 && b.width < 0.22)
-            let isGiantCluster = (b.width > 0.38)
+            let isGiantCluster = (b.width > 0.40)
             
-            return area >= 0.0008 && !isCeiling && !isDoorFrame && !isTripod && !isRightWall && !isCenterWallBox6 && !isGiantCluster
+            return area >= 0.0008 && !isCeiling && !isDoorFrame && !isTripod && !isGiantCluster
         }
         
         // 4. Single Speaker Vertical Column Fusion

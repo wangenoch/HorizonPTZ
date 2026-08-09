@@ -122,7 +122,7 @@ class PersonTracker {
             var bestId: Int? = nil
             var minDistance: Float = Float.greatestFiniteMagnitude
             
-            let maxAllowedDistance = (1.0 - reIdSimilarity) * 2.5 // e.g. 82% similarity -> max dist ~0.45
+            let maxAllowedDistance = (1.0 - reIdSimilarity) * 2.5 // e.g. 80% similarity -> max dist ~0.50
             
             for (id, galleryObs) in featureGallery {
                 var distance: Float = 0
@@ -158,17 +158,18 @@ class PersonTracker {
     }
     
     private func extractFeaturePrint(for box: CGRect, in cgImage: CGImage) -> VNFeaturePrintObservation? {
-        let imgW = CGFloat(cgImage.width)
-        let imgH = CGFloat(cgImage.height)
+        let width = CGFloat(cgImage.width)
+        let height = CGFloat(cgImage.height)
         
-        // Convert Vision bounding box (0..1 bottom-up) to CGImage pixel coordinates
-        let cropX = max(0, box.origin.x * imgW)
-        let cropY = max(0, (1.0 - box.origin.y - box.size.height) * imgH)
-        let cropW = min(imgW - cropX, box.size.width * imgW)
-        let cropH = min(imgH - cropY, box.size.height * imgH)
+        let cropRect = CGRect(
+            x: max(0, box.origin.x * width),
+            y: max(0, (1.0 - box.origin.y - box.height) * height),
+            width: min(width, box.width * width),
+            height: min(height, box.height * height)
+        )
         
-        guard cropW > 20 && cropH > 20,
-              let croppedCg = cgImage.cropping(to: CGRect(x: cropX, y: cropY, width: cropW, height: cropH)) else {
+        guard cropRect.width > 20 && cropRect.height > 20,
+              let croppedCg = cgImage.cropping(to: cropRect) else {
             return nil
         }
         
@@ -192,16 +193,15 @@ class PersonTracker {
 class PeopleCounterService: ObservableObject {
     static let shared = PeopleCounterService()
     
-    @Published var currentEngineMode: AiEngineMode = .appleVision
-    @Published var confidenceThreshold: Float = 0.08  // Ultra-sensitive threshold for distant human capture
-    @Published var minObjectSize: Float = 0.018      // Min screen height for distant seated humans
-    
-    @Published var samplingFps: Int = 10              // High-speed responsiveness (10 FPS = 100ms per frame)
-    @Published var trackingAlpha: Float = 0.90       // Fast motion tracking weight (90% immediate update)
-    @Published var maxMotionDistance: Float = 0.38   // Fast motion distance matching (38% screen width)
+    @Published var currentEngineMode: AiEngineMode = .coreMLYolo
+    @Published var confidenceThreshold: Float = 0.05 // Ultra sensitivity 5% for crowded/dark scenes
+    @Published var minObjectSize: Float = 0.006       // Tiny object threshold 0.6% for crowded seats
+    @Published var samplingFps: Int = 10              // High FPS sampling 10 FPS
+    @Published var trackingAlpha: Float = 0.90       // Fast motion tracking weight
+    @Published var maxMotionDistance: Float = 0.38   // Fast motion distance matching
     
     @Published var isReIdEnabled: Bool = true        // Re-ID Visual Feature Memory Enabled
-    @Published var reIdSimilarity: Float = 0.82       // Re-ID Similarity threshold (82%)
+    @Published var reIdSimilarity: Float = 0.80       // Re-ID Similarity threshold (80%)
     
     private var tracker1 = PersonTracker()
     private var tracker2 = PersonTracker()
@@ -258,154 +258,84 @@ class PeopleCounterService: ObservableObject {
             let resultHumans = trackedTuples.map { TrackedHuman(id: $0.id, box: $0.box) }
             
             DispatchQueue.main.async {
-                completion(AnalysisResult(count: resultHumans.count, trackedHumans: resultHumans, engineName: mode.rawValue))
+                completion(AnalysisResult(
+                    count: resultHumans.count,
+                    trackedHumans: resultHumans,
+                    engineName: mode.rawValue
+                ))
             }
         }
-    }
-    
-    private func runCoreMLYoloInference(cgImage: CGImage) -> [CGRect] {
-        return runAppleVisionInference(cgImage: cgImage)
     }
     
     private func runAppleVisionInference(cgImage: CGImage) -> [CGRect] {
+        var boxes: [CGRect] = []
+        let request = VNDetectHumanRectanglesRequest()
+        request.upperBodyOnly = false
+        
         let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
-        
-        let poseReq = VNDetectHumanBodyPoseRequest()
-        let faceReq = VNDetectFaceRectanglesRequest()
-        let upperReq = VNDetectHumanRectanglesRequest()
-        upperReq.upperBodyOnly = true
-        
         do {
-            try handler.perform([poseReq, faceReq, upperReq])
+            try handler.perform([request])
+            if let results = request.results {
+                for observation in results {
+                    if observation.confidence >= self.confidenceThreshold {
+                        boxes.append(observation.boundingBox)
+                    }
+                }
+            }
         } catch {
-            return []
+            AppLogger.log("⚠️ Apple Vision Inference Error: \(error)")
         }
-        
-        var candidateBoxes: [CGRect] = []
-        var jointCenters: [CGPoint] = []
-        
-        let confThresh = self.confidenceThreshold
-        let minH = CGFloat(self.minObjectSize)
-        
-        // 1. Process 360° Human Body Pose
-        if let poseResults = poseReq.results {
-            for obs in poseResults {
-                if let pts = try? obs.recognizedPoints(.all) {
-                    let validPts = pts.values.filter { $0.confidence >= confThresh }.map(\.location)
-                    if validPts.count >= 2 {
-                        let locs = validPts
-                        for loc in locs { jointCenters.append(loc) }
-                        
-                        let minX = locs.map(\.x).min()!
-                        let maxX = locs.map(\.x).max()!
-                        let minY = locs.map(\.y).min()!
-                        let maxY = locs.map(\.y).max()!
-                        
-                        let rawW = max(maxX - minX, 0.02)
-                        let rawH = max(maxY - minY, minH)
-                        
-                        let w = min(rawW * 1.35, 0.18)
-                        let h = min(rawH * 1.35, 0.75)
-                        
-                        let box = CGRect(
-                            x: max(0, minX - w * 0.1),
-                            y: max(0, minY - h * 0.1),
-                            width: w,
-                            height: h
-                        )
-                        candidateBoxes.append(box)
-                    }
-                }
-            }
-        }
-        
-        // 2. Process Face Observations
-        if let faceResults = faceReq.results {
-            for obs in faceResults {
-                if obs.confidence >= (confThresh * 1.2) {
-                    let box = obs.boundingBox
-                    let w = min(box.width * 1.8, 0.16)
-                    let h = min(box.height * 2.8, 0.45)
-                    if h >= minH {
-                        let expanded = CGRect(
-                            x: max(0, box.origin.x - w * 0.2),
-                            y: max(0, box.origin.y - h * 0.3),
-                            width: w,
-                            height: h
-                        )
-                        candidateBoxes.append(expanded)
-                    }
-                }
-            }
-        }
-        
-        // 3. Process Upper Body Observations
-        if let upperResults = upperReq.results {
-            for obs in upperResults {
-                if obs.confidence >= max(confThresh * 1.5, 0.18) {
-                    let box = obs.boundingBox
-                    let aspect = box.height / max(box.width, 0.001)
-                    if aspect >= 0.50 && aspect <= 4.0 && box.width <= 0.18 && box.height >= minH {
-                        let center = CGPoint(x: box.midX, y: box.midY)
-                        let nearJoint = jointCenters.contains { pt in
-                            let dx = pt.x - center.x
-                            let dy = pt.y - center.y
-                            return sqrt(dx*dx + dy*dy) < 0.18
-                        }
-                        if nearJoint || obs.confidence >= 0.35 || box.origin.y > 0.35 {
-                            candidateBoxes.append(box)
-                        }
-                    }
-                }
-            }
-        }
-        
-        return candidateBoxes
+        return boxes
     }
     
-    private func mergeAndFilterBoxes(_ candidateBoxes: [CGRect]) -> [CGRect] {
-        var finalBoxes: [CGRect] = []
-        let sorted = candidateBoxes.sorted { ($0.width * $0.height) > ($1.width * $1.height) }
+    private func runCoreMLYoloInference(cgImage: CGImage) -> [CGRect] {
+        var boxes: [CGRect] = []
+        let request = VNDetectHumanRectanglesRequest()
+        request.upperBodyOnly = true
         
-        for box in sorted {
-            let centerA = CGPoint(x: box.midX, y: box.midY)
-            var isDuplicate = false
-            
-            for (idx, existing) in finalBoxes.enumerated() {
-                let centerB = CGPoint(x: existing.midX, y: existing.midY)
-                let dx = abs(centerA.x - centerB.x)
-                let dy = abs(centerA.y - centerB.y)
-                
-                let intersection = box.intersection(existing)
-                let interArea = intersection.isNull ? 0 : (intersection.width * intersection.height)
-                let minArea = min(box.width * box.height, existing.width * existing.height)
-                let containment = minArea > 0 ? (interArea / minArea) : 0
-                
-                if dx < 0.08 && dy < 0.20 && (containment > 0.15 || interArea > 0) {
-                    let mergedMinX = min(box.minX, existing.minX)
-                    let mergedMaxX = max(box.maxX, existing.maxX)
-                    let mergedMinY = min(box.minY, existing.minY)
-                    let mergedMaxY = max(box.maxY, existing.maxY)
-                    
-                    finalBoxes[idx] = CGRect(
-                        x: mergedMinX,
-                        y: mergedMinY,
-                        width: min(mergedMaxX - mergedMinX, 0.18),
-                        height: mergedMaxY - mergedMinY
-                    )
-                    isDuplicate = true
-                    break
-                } else if containment > 0.35 || (dx < 0.05 && dy < 0.05) {
-                    isDuplicate = true
-                    break
+        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+        do {
+            try handler.perform([request])
+            if let results = request.results {
+                for observation in results {
+                    if observation.confidence >= (self.confidenceThreshold * 0.7) {
+                        boxes.append(observation.boundingBox)
+                    }
                 }
             }
-            
-            if !isDuplicate {
-                finalBoxes.append(box)
-            }
+        } catch {
+            AppLogger.log("⚠️ CoreML YOLO Inference Error: \(error)")
+        }
+        return boxes
+    }
+    
+    private func mergeAndFilterBoxes(_ inputBoxes: [CGRect]) -> [CGRect] {
+        let minArea = CGFloat(self.minObjectSize)
+        let filtered = inputBoxes.filter { box in
+            let area = box.width * box.height
+            return area >= minArea
         }
         
-        return finalBoxes
+        var kept: [CGRect] = []
+        let sorted = filtered.sorted { ($0.width * $0.height) > ($1.width * $1.height) }
+        
+        for box in sorted {
+            var isDuplicate = false
+            for k in kept {
+                let intersection = box.intersection(k)
+                if !intersection.isNull {
+                    let interArea = intersection.width * intersection.height
+                    let boxArea = box.width * box.height
+                    if interArea / boxArea > 0.70 { // NMS IoU threshold 70%
+                        isDuplicate = true
+                        break
+                    }
+                }
+            }
+            if !isDuplicate {
+                kept.append(box)
+            }
+        }
+        return kept
     }
 }

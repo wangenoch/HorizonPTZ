@@ -12,12 +12,12 @@ guard let nsImage = NSImage(contentsOfFile: imagePath),
 let w = CGFloat(cgImage.width)
 let h = CGFloat(cgImage.height)
 
-print("=== DEEP NEURAL BODY ABSORPTION & CROWD DETECTOR OPTIMIZER ===")
+print("=== AUTOMATED REPEATED TESTING & OPTIMIZATION ENGINE ===")
 print("Screen size: \(w) x \(h)")
 
-// Crop CAM 01 (Left) and CAM 02 (Right) viewports in CGImage top-left coordinates
-let cam1Rect = CGRect(x: w * 0.04, y: h * 0.20, width: w * 0.43, height: h * 0.45)
-let cam2Rect = CGRect(x: w * 0.53, y: h * 0.20, width: w * 0.43, height: h * 0.45)
+// Crop exact player viewports
+let cam1Rect = CGRect(x: w * 0.04, y: h * 0.25, width: w * 0.43, height: h * 0.65)
+let cam2Rect = CGRect(x: w * 0.53, y: h * 0.25, width: w * 0.43, height: h * 0.65)
 
 guard let cam1Cg = cgImage.cropping(to: cam1Rect),
       let cam2Cg = cgImage.cropping(to: cam2Rect) else {
@@ -25,44 +25,69 @@ guard let cam1Cg = cgImage.cropping(to: cam1Rect),
     exit(1)
 }
 
-struct BBox {
-    var rect: CGRect
-    var confidence: Float
-    var label: String
-}
-
-func processViewport(cgImage: CGImage, name: String) -> [CGRect] {
-    print("\n--- Processing \(name) ---")
-    var raw: [BBox] = []
+func runOptimizedDetection(cgImage: CGImage, cameraName: String) -> [CGRect] {
+    print("\n--- Iterative Optimizer Testing \(cameraName) ---")
     
-    // Pass 1: Global Requests
-    let reqFull = VNDetectHumanRectanglesRequest()
-    reqFull.upperBodyOnly = false
-    let reqUpper = VNDetectHumanRectanglesRequest()
-    reqUpper.upperBodyOnly = true
-    let reqFace = VNDetectFaceRectanglesRequest()
+    var validHumanBoxes: [CGRect] = []
     
-    let h1 = VNImageRequestHandler(cgImage: cgImage, options: [:])
-    try? h1.perform([reqFull, reqUpper, reqFace])
+    // Pass 1: Pose Keypoint Detection (Highest Confidence Human Detector)
+    let poseReq = VNDetectHumanBodyPoseRequest()
+    let handler1 = VNImageRequestHandler(cgImage: cgImage, options: [:])
+    try? handler1.perform([poseReq])
     
-    for r in (reqFull.results ?? []) {
-        if r.confidence >= 0.03 { raw.append(BBox(rect: r.boundingBox, confidence: r.confidence, label: "Full")) }
-    }
-    for r in (reqUpper.results ?? []) {
-        if r.confidence >= 0.03 { raw.append(BBox(rect: r.boundingBox, confidence: r.confidence, label: "Upper")) }
-    }
-    for f in (reqFace.results ?? []) {
-        if f.confidence >= 0.05 {
-            let b = f.boundingBox
-            let head = CGRect(x: max(0, b.origin.x - b.width*0.2),
-                              y: max(0, b.origin.y - b.height*0.2),
-                              width: min(1.0 - b.origin.x, b.width * 1.4),
-                              height: min(1.0 - b.origin.y, b.height * 1.8))
-            raw.append(BBox(rect: head, confidence: f.confidence, label: "Face"))
+    for obs in (poseReq.results ?? []) {
+        if let points = try? obs.recognizedPoints(forGroupKey: .all) {
+            let validPoints = points.values.filter { $0.confidence > 0.15 }
+            if validPoints.count >= 2 {
+                let xs = validPoints.map { CGFloat($0.location.x) }
+                let ys = validPoints.map { CGFloat($0.location.y) }
+                
+                let minX = xs.min()!
+                let maxX = xs.max()!
+                let minY = ys.min()!
+                let maxY = ys.max()!
+                
+                let padX: CGFloat = 0.05
+                let padY: CGFloat = 0.08
+                
+                let b = CGRect(
+                    x: max(0, minX - padX),
+                    y: max(0, minY - padY),
+                    width: min(0.35, (maxX - minX) + padX * 2), // Max width 0.35 to prevent giant wall boxes!
+                    height: min(0.65, (maxY - minY) + padY * 2)
+                )
+                validHumanBoxes.append(b)
+            }
         }
     }
     
-    // Pass 2: 4x4 Multi-scale Grid Tiling (For Seated Audience)
+    // Pass 2: Face & Head Detection
+    let faceReq = VNDetectFaceRectanglesRequest()
+    let handler2 = VNImageRequestHandler(cgImage: cgImage, options: [:])
+    try? handler2.perform([faceReq])
+    
+    for f in (faceReq.results ?? []) {
+        if f.confidence >= 0.05 {
+            let b = f.boundingBox
+            let head = CGRect(x: max(0, b.origin.x - b.width*0.25),
+                              y: max(0, b.origin.y - b.height*0.25),
+                              width: min(0.20, b.width * 1.5),
+                              height: min(0.25, b.height * 1.9))
+            
+            var isInsidePose = false
+            for poseBox in validHumanBoxes {
+                if poseBox.contains(CGPoint(x: head.midX, y: head.midY)) {
+                    isInsidePose = true
+                    break
+                }
+            }
+            if !isInsidePose {
+                validHumanBoxes.append(head)
+            }
+        }
+    }
+    
+    // Pass 3: 4x4 Grid Seated Audience Head Tiling
     let cols = 4
     let rows = 4
     let tileW = cgImage.width / cols
@@ -73,102 +98,76 @@ func processViewport(cgImage: CGImage, name: String) -> [CGRect] {
             let tileRect = CGRect(x: c * tileW, y: r * tileH, width: tileW, height: tileH)
             guard let tileCg = cgImage.cropping(to: tileRect) else { continue }
             
-            // Audience seating is bottom 3 rows (r <= 2) in Vision y-up space
-            let isSeatingArea = (r <= 2)
-            let tileThresh: Float = isSeatingArea ? 0.01 : 0.06
-            
-            let tFull = VNDetectHumanRectanglesRequest()
-            tFull.upperBodyOnly = false
-            let tUpper = VNDetectHumanRectanglesRequest()
-            tUpper.upperBodyOnly = true
-            let tFace = VNDetectFaceRectanglesRequest()
-            
-            let th = VNImageRequestHandler(cgImage: tileCg, options: [:])
-            try? th.perform([tFull, tUpper, tFace])
-            
-            for res in (tFull.results ?? []) + (tUpper.results ?? []) {
-                if res.confidence >= tileThresh {
-                    let b = res.boundingBox
-                    let normX = (CGFloat(c * tileW) + b.origin.x * CGFloat(tileW)) / CGFloat(cgImage.width)
-                    let normY = (CGFloat(r * tileH) + b.origin.y * CGFloat(tileH)) / CGFloat(cgImage.height)
-                    let normW = (b.width * CGFloat(tileW)) / CGFloat(cgImage.width)
-                    let normH = (b.height * CGFloat(tileH)) / CGFloat(cgImage.height)
-                    raw.append(BBox(rect: CGRect(x: normX, y: normY, width: normW, height: normH), confidence: res.confidence, label: "TileBody"))
-                }
-            }
-            for f in (tFace.results ?? []) {
-                if f.confidence >= tileThresh {
-                    let b = f.boundingBox
-                    let normX = (CGFloat(c * tileW) + (b.origin.x - b.width*0.2) * CGFloat(tileW)) / CGFloat(cgImage.width)
-                    let normY = (CGFloat(r * tileH) + (b.origin.y - b.height*0.2) * CGFloat(tileH)) / CGFloat(cgImage.height)
-                    let normW = (b.width * 1.4 * CGFloat(tileW)) / CGFloat(cgImage.width)
-                    let normH = (b.height * 1.8 * CGFloat(tileH)) / CGFloat(cgImage.height)
-                    raw.append(BBox(rect: CGRect(x: normX, y: normY, width: normW, height: normH), confidence: f.confidence, label: "TileFace"))
+            // Seating area is bottom 3 rows (r <= 2 in Vision y-up space)
+            if r <= 2 {
+                let tFace = VNDetectFaceRectanglesRequest()
+                let tPose = VNDetectHumanBodyPoseRequest()
+                let th = VNImageRequestHandler(cgImage: tileCg, options: [:])
+                try? th.perform([tFace, tPose])
+                
+                for f in (tFace.results ?? []) {
+                    if f.confidence >= 0.05 {
+                        let b = f.boundingBox
+                        let normX = (CGFloat(c * tileW) + (b.origin.x - b.width*0.25) * CGFloat(tileW)) / CGFloat(cgImage.width)
+                        let normY = (CGFloat(r * tileH) + (b.origin.y - b.height*0.25) * CGFloat(tileH)) / CGFloat(cgImage.height)
+                        let normW = (b.width * 1.5 * CGFloat(tileW)) / CGFloat(cgImage.width)
+                        let normH = (b.height * 1.9 * CGFloat(tileH)) / CGFloat(cgImage.height)
+                        
+                        let tileHeadBox = CGRect(x: normX, y: normY, width: normW, height: normH)
+                        
+                        var isDup = false
+                        for k in validHumanBoxes {
+                            if k.contains(CGPoint(x: tileHeadBox.midX, y: tileHeadBox.midY)) {
+                                isDup = true
+                                break
+                            }
+                        }
+                        if !isDup {
+                            validHumanBoxes.append(tileHeadBox)
+                        }
+                    }
                 }
             }
         }
     }
     
-    print("Raw detections collected: \(raw.count)")
-    
-    // Filter out ceiling wall noise (y > 0.85) and tiny noise (< 0.0015 area)
-    let valid = raw.filter { b in
-        let r = b.rect
-        return r.origin.y + r.height < 0.85 && r.width * r.height >= 0.0015
+    // Filter out architectural door frames (x < 0.08 & y > 0.40) & ceiling wall areas (y + height > 0.85)
+    let cleanBoxes = validHumanBoxes.filter { b in
+        let isDoorFrame = (b.origin.x < 0.08 && b.origin.y > 0.40)
+        let isCeiling = (b.origin.y + b.height > 0.85)
+        let isTooWide = (b.width > 0.38) // Reject giant wall boxes!
+        return !isDoorFrame && !isCeiling && !isTooWide
     }
     
-    // === AGGRESSIVE HUMAN BODY & MICROPHONE ABSORPTION ENGINE ===
-    // Sort boxes by area descending
-    var merged: [CGRect] = []
-    let sortedByArea = valid.map { $0.rect }.sorted { ($0.width * $0.height) > ($1.width * $1.height) }
+    // Clean NMS (Max 1 box per person)
+    var finalKept: [CGRect] = []
+    let sorted = cleanBoxes.sorted { ($0.width * $0.height) > ($1.width * $1.height) }
     
-    for b in sortedByArea {
-        var absorbedIdx: Int? = nil
-        for (idx, existing) in merged.enumerated() {
-            let intersection = b.intersection(existing)
-            let bArea = b.width * b.height
-            let eArea = existing.width * existing.height
-            
-            let centerDx = abs(b.midX - existing.midX)
-            let centerDy = abs(b.midY - existing.midY)
-            let maxW = max(b.width, existing.width)
-            let maxH = max(b.height, existing.height)
-            
-            // Check 1: Box B center is INSIDE Box A (Microphone/chest/belt inside speaker body)
-            let isCenterInside = existing.contains(CGPoint(x: b.midX, y: b.midY)) || b.contains(CGPoint(x: existing.midX, y: existing.midY))
-            
-            // Check 2: Same vertical human column (center X dx < 50% maxW AND center Y dy < 85% maxH)
-            let isSameColumn = (centerDx < maxW * 0.50 && centerDy < maxH * 0.85)
-            
-            // Check 3: Overlap ratio
-            let isOverlapping = !intersection.isNull && (intersection.width * intersection.height / bArea > 0.30)
-            
-            if isCenterInside || isSameColumn || isOverlapping {
-                absorbedIdx = idx
-                break
+    for box in sorted {
+        var isOverlap = false
+        for k in finalKept {
+            let intersection = box.intersection(k)
+            if !intersection.isNull {
+                let interArea = intersection.width * intersection.height
+                let boxArea = box.width * box.height
+                if interArea / boxArea > 0.40 {
+                    isOverlap = true
+                    break
+                }
             }
         }
-        
-        if let idx = absorbedIdx {
-            // Expand parent box to enclose the absorbed part (mic, chest, belt)
-            let e = merged[idx]
-            let newMinX = min(e.minX, b.minX)
-            let newMinY = min(e.minY, b.minY)
-            let newMaxX = max(e.maxX, b.maxX)
-            let newMaxY = max(e.maxY, b.maxY)
-            merged[idx] = CGRect(x: newMinX, y: newMinY, width: newMaxX - newMinX, height: newMaxY - newMinY)
-        } else {
-            merged.append(b)
+        if !isOverlap {
+            finalKept.append(box)
         }
     }
     
-    print("After Aggressive Neural Body & Mic Absorption: \(merged.count) clean human boxes!")
-    return merged
+    print("Final Clean Human Count: \(finalKept.count) people")
+    return finalKept
 }
 
-let res1 = processViewport(cgImage: cam1Cg, name: "CAM 01 (Left)")
-let res2 = processViewport(cgImage: cam2Cg, name: "CAM 02 (Right)")
+let res1 = runOptimizedDetection(cgImage: cam1Cg, cameraName: "CAM 01 (Left)")
+let res2 = runOptimizedDetection(cgImage: cam2Cg, cameraName: "CAM 02 (Right)")
 
-print("\n=== OPTIMIZER FINAL SUMMARY ===")
-print("CAM 01 Final People Count: \(res1.count)")
-print("CAM 02 Final People Count: \(res2.count)")
+print("\n=== ITERATIVE OPTIMIZER FINAL TEST SUMMARY ===")
+print("CAM 01 People Count: \(res1.count)")
+print("CAM 02 People Count: \(res2.count)")

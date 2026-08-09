@@ -71,7 +71,6 @@ class PersonTracker {
             var person = trackedPeople[match.trackedIdx]
             let targetBox = newBoxes[match.newBoxIdx]
             
-            // Exponential Moving Average (EMA) position smoothing
             let smoothedBox = CGRect(
                 x: person.box.origin.x * (1 - alpha) + targetBox.origin.x * alpha,
                 y: person.box.origin.y * (1 - alpha) + targetBox.origin.y * alpha,
@@ -277,7 +276,7 @@ class PeopleCounterService: ObservableObject {
     private func runMultiScaleInference(cgImage: CGImage) -> [CGRect] {
         var rawBoxes: [CGRect] = []
         
-        // 1. Deep Learning Pose Request (Extracts anatomical keypoints: Nose, Shoulders, Hips)
+        // Pass 1: Anatomical Body Pose Request (Highest accuracy for real humans)
         let poseReq = VNDetectHumanBodyPoseRequest()
         let reqFull = VNDetectHumanRectanglesRequest()
         reqFull.upperBodyOnly = false
@@ -286,7 +285,6 @@ class PeopleCounterService: ObservableObject {
         let h1 = VNImageRequestHandler(cgImage: cgImage, options: [:])
         try? h1.perform([poseReq, reqFull, reqFace])
         
-        // Process Body Poses (Guarantees 1 Box per Speaker!)
         for obs in (poseReq.results ?? []) {
             if let points = try? obs.recognizedPoints(forGroupKey: .all) {
                 let validPoints = points.values.filter { $0.confidence > 0.15 }
@@ -302,19 +300,19 @@ class PeopleCounterService: ObservableObject {
                     let padX: CGFloat = 0.05
                     let padY: CGFloat = 0.08
                     
-                    let box = CGRect(
+                    let b = CGRect(
                         x: max(0, minX - padX),
                         y: max(0, minY - padY),
-                        width: min(1.0, (maxX - minX) + padX * 2),
-                        height: min(1.0, (maxY - minY) + padY * 2)
+                        width: min(0.35, (maxX - minX) + padX * 2), // Cap width at 0.35 to prevent giant wall boxes!
+                        height: min(0.65, (maxY - minY) + padY * 2)
                     )
-                    rawBoxes.append(box)
+                    rawBoxes.append(b)
                 }
             }
         }
         
         for r in (reqFull.results ?? []) {
-            if r.confidence >= self.confidenceThreshold {
+            if r.confidence >= self.confidenceThreshold && r.boundingBox.width <= 0.35 {
                 rawBoxes.append(r.boundingBox)
             }
         }
@@ -324,8 +322,8 @@ class PeopleCounterService: ObservableObject {
                 let b = f.boundingBox
                 let headBox = CGRect(x: max(0, b.origin.x - b.width*0.25),
                                      y: max(0, b.origin.y - b.height*0.25),
-                                     width: min(1.0 - b.origin.x, b.width * 1.5),
-                                     height: min(1.0 - b.origin.y, b.height * 1.9))
+                                     width: min(0.20, b.width * 1.5),
+                                     height: min(0.25, b.height * 1.9))
                 rawBoxes.append(headBox)
             }
         }
@@ -341,48 +339,14 @@ class PeopleCounterService: ObservableObject {
                 let tileRect = CGRect(x: c * tileW, y: r * tileH, width: tileW, height: tileH)
                 guard let tileCg = cgImage.cropping(to: tileRect) else { continue }
                 
-                // Audience seating is bottom 3 rows (r <= 2 in Vision y-up space)
+                // Audience seating area is bottom 3 rows (r <= 2 in Vision y-up space)
                 let isAudienceArea = (r <= 2)
                 let tileThresh: Float = isAudienceArea ? 0.015 : self.confidenceThreshold
                 
-                let tPose = VNDetectHumanBodyPoseRequest()
-                let tFull = VNDetectHumanRectanglesRequest()
-                tFull.upperBodyOnly = false
                 let tFace = VNDetectFaceRectanglesRequest()
-                
+                let tPose = VNDetectHumanBodyPoseRequest()
                 let th = VNImageRequestHandler(cgImage: tileCg, options: [:])
-                try? th.perform([tPose, tFull, tFace])
-                
-                for obs in (tPose.results ?? []) {
-                    if let points = try? obs.recognizedPoints(forGroupKey: .all) {
-                        let validPoints = points.values.filter { $0.confidence > 0.15 }
-                        if validPoints.count >= 2 {
-                            let xs = validPoints.map { CGFloat($0.location.x) }
-                            let ys = validPoints.map { CGFloat($0.location.y) }
-                            let minX = xs.min()!
-                            let maxX = xs.max()!
-                            let minY = ys.min()!
-                            let maxY = ys.max()!
-                            
-                            let normX = (CGFloat(c * tileW) + minX * CGFloat(tileW)) / CGFloat(cgImage.width)
-                            let normY = (CGFloat(r * tileH) + minY * CGFloat(tileH)) / CGFloat(cgImage.height)
-                            let normW = ((maxX - minX) * CGFloat(tileW)) / CGFloat(cgImage.width)
-                            let normH = ((maxY - minY) * CGFloat(tileH)) / CGFloat(cgImage.height)
-                            rawBoxes.append(CGRect(x: normX, y: normY, width: max(0.04, normW), height: max(0.08, normH)))
-                        }
-                    }
-                }
-                
-                for res in (tFull.results ?? []) {
-                    if res.confidence >= tileThresh {
-                        let b = res.boundingBox
-                        let normX = (CGFloat(c * tileW) + b.origin.x * CGFloat(tileW)) / CGFloat(cgImage.width)
-                        let normY = (CGFloat(r * tileH) + b.origin.y * CGFloat(tileH)) / CGFloat(cgImage.height)
-                        let normW = (b.width * CGFloat(tileW)) / CGFloat(cgImage.width)
-                        let normH = (b.height * CGFloat(tileH)) / CGFloat(cgImage.height)
-                        rawBoxes.append(CGRect(x: normX, y: normY, width: normW, height: normH))
-                    }
-                }
+                try? th.perform([tFace, tPose])
                 
                 for f in (tFace.results ?? []) {
                     if f.confidence >= tileThresh {
@@ -401,55 +365,43 @@ class PeopleCounterService: ObservableObject {
     }
     
     private func mergeAndFilterBoxes(_ inputBoxes: [CGRect]) -> [CGRect] {
-        let minArea = CGFloat(self.minObjectSize) // 0.002
+        let minArea = CGFloat(self.minObjectSize) // 0.003
         
-        // Rule A: Exclude top ceiling wall area (y + height >= 0.82 in Vision y-up space)
-        // Filter out extreme poles (door frames / mic stands) where width/height < 0.15 or width/height > 2.2
+        // Rule A: Exclude top ceiling wall area (y + height >= 0.82)
+        // Rule B: Exclude door frame on left wall (x < 0.08 & y > 0.40)
+        // Rule C: Exclude giant wall boxes (width > 0.35)
         let validBoxes = inputBoxes.filter { b in
             let area = b.width * b.height
             let aspectRatio = b.width / b.height
+            let isDoorFrame = (b.origin.x < 0.08 && b.origin.y > 0.40)
+            let isCeiling = (b.origin.y + b.height >= 0.82)
+            let isTooWide = (b.width > 0.35)
             
-            // Exclude door frames on left wall (x < 0.08 and y > 0.50)
-            let isDoorFrame = (b.origin.x < 0.08 && b.origin.y > 0.45 && b.height > 0.25)
-            
-            return area >= minArea && b.origin.y + b.height < 0.82 && aspectRatio >= 0.15 && aspectRatio <= 2.2 && !isDoorFrame
+            return area >= minArea && !isCeiling && !isDoorFrame && !isTooWide && aspectRatio >= 0.15 && aspectRatio <= 2.2
         }
         
-        // Rule B: Single Speaker Anatomical Column Fusion (Merges mic, chest, belt into EXACTLY 1 SPEAKER BOX!)
-        var mergedBoxes: [CGRect] = []
-        let sortedByArea = validBoxes.sorted { ($0.width * $0.height) > ($1.width * $1.height) }
+        // Rule D: NMS IoU Filtering
+        var finalKept: [CGRect] = []
+        let sorted = validBoxes.sorted { ($0.width * $0.height) > ($1.width * $1.height) }
         
-        for b in sortedByArea {
-            var absorbedIdx: Int? = nil
-            for (idx, existing) in mergedBoxes.enumerated() {
-                let intersection = b.intersection(existing)
-                let centerDx = abs(b.midX - existing.midX)
-                let centerDy = abs(b.midY - existing.midY)
-                let maxW = max(b.width, existing.width)
-                let maxH = max(b.height, existing.height)
-                
-                let isCenterInside = existing.contains(CGPoint(x: b.midX, y: b.midY)) || b.contains(CGPoint(x: existing.midX, y: existing.midY))
-                let isSameColumn = (centerDx < maxW * 0.55 && centerDy < maxH * 0.90)
-                let isOverlapping = !intersection.isNull && (intersection.width * intersection.height / (b.width * b.height) > 0.25)
-                
-                if isCenterInside || isSameColumn || isOverlapping {
-                    absorbedIdx = idx
-                    break
+        for box in sorted {
+            var isOverlap = false
+            for k in finalKept {
+                let intersection = box.intersection(k)
+                if !intersection.isNull {
+                    let interArea = intersection.width * intersection.height
+                    let boxArea = box.width * box.height
+                    if interArea / boxArea > 0.40 {
+                        isOverlap = true
+                        break
+                    }
                 }
             }
-            
-            if let idx = absorbedIdx {
-                let e = mergedBoxes[idx]
-                let newMinX = min(e.minX, b.minX)
-                let newMinY = min(e.minY, b.minY)
-                let newMaxX = max(e.maxX, b.maxX)
-                let newMaxY = max(e.maxY, b.maxY)
-                mergedBoxes[idx] = CGRect(x: newMinX, y: newMinY, width: newMaxX - newMinX, height: newMaxY - newMinY)
-            } else {
-                mergedBoxes.append(b)
+            if !isOverlap {
+                finalKept.append(box)
             }
         }
         
-        return mergedBoxes
+        return finalKept
     }
 }

@@ -169,7 +169,7 @@ class PeopleCounterService: ObservableObject {
         let reIdSim = self.reIdSimilarity
         
         DispatchQueue.global(qos: .userInitiated).async {
-            let finalBoxes = self.runPrecisionDetection(cgImage: cgImage)
+            let finalBoxes = self.runPrecisionDetection(cgImage: cgImage, cameraIndex: cameraIndex)
             
             let tracker = (cameraIndex == 1) ? self.tracker1 : self.tracker2
             let trackedTuples = tracker.update(
@@ -200,7 +200,7 @@ class PeopleCounterService: ObservableObject {
         return runPrecisionDetection(cgImage: cgImage)
     }
     
-    private func runPrecisionDetection(cgImage: CGImage) -> [CGRect] {
+    private func runPrecisionDetection(cgImage: CGImage, cameraIndex: Int = 1) -> [CGRect] {
         var rawBoxes: [CGRect] = []
         
         // 1. Pass 1: Human Body Pose Keypoint Request (For Presenter & Standing Bodies)
@@ -245,51 +245,95 @@ class PeopleCounterService: ObservableObject {
             }
         }
         
-        // 2. Pass 2: 8x8 Seated Audience Micro Grid (Extracts all audience heads in dense crowd)
-        let cols = 8
-        let rows = 8
-        let tileW = CGFloat(cgImage.width) / CGFloat(cols)
-        let tileH = CGFloat(cgImage.height) / CGFloat(rows)
-        let fullW = CGFloat(cgImage.width)
-        let fullH = CGFloat(cgImage.height)
-        
-        for r in 0..<rows {
-            for c in 0..<cols {
-                let tileRect = CGRect(x: CGFloat(c) * tileW, y: CGFloat(r) * tileH, width: tileW, height: tileH)
-                guard let tileCg = cgImage.cropping(to: tileRect) else { continue }
-                
-                // Lower rows (r >= 1) is audience seating area
-                let isAudienceArea = (r >= 1)
-                let tileThresh: Float = isAudienceArea ? 0.005 : 0.03
-                
-                let tFace = VNDetectFaceRectanglesRequest()
-                let tHuman = VNDetectHumanRectanglesRequest()
-                tHuman.upperBodyOnly = true
-                
-                let th = VNImageRequestHandler(cgImage: tileCg, options: [:])
-                try? th.perform([tFace, tHuman])
-                
-                for f in (tFace.results ?? []) {
-                    if f.confidence >= tileThresh {
-                        let b = f.boundingBox
-                        let normX = (CGFloat(c) * tileW + (b.origin.x - b.width * 0.15) * tileW) / fullW
-                        let normY = 1.0 - ((CGFloat(r + 1) * tileH) - (b.origin.y - b.height * 0.15) * tileH) / fullH
-                        let normW = (b.width * 1.3 * tileW) / fullW
-                        let normH = (b.height * 1.6 * tileH) / fullH
-                        
-                        rawBoxes.append(CGRect(x: max(0, normX), y: max(0, normY), width: min(0.18, normW), height: min(0.25, normH)))
+        // 2. Pass 2: 10x6 Seated Audience Overlapping Micro Grid (ONLY FOR CAM 01 - Wide Audience View)
+        if cameraIndex == 1 {
+            let cols = 10
+            let rows = 6
+            let tileW = CGFloat(cgImage.width) / CGFloat(cols)
+            let tileH = CGFloat(cgImage.height) / CGFloat(rows)
+            let fullW = CGFloat(cgImage.width)
+            let fullH = CGFloat(cgImage.height)
+            
+            for r in 0..<rows {
+                for c in 0..<cols {
+                    let tileRect = CGRect(x: CGFloat(c) * tileW, y: CGFloat(r) * tileH, width: tileW, height: tileH)
+                    guard let tileCg = cgImage.cropping(to: tileRect) else { continue }
+                    
+                    let isAudienceArea = (r >= 1)
+                    let tileThresh: Float = isAudienceArea ? 0.002 : 0.03
+                    
+                    let tFace = VNDetectFaceRectanglesRequest()
+                    let tHuman = VNDetectHumanRectanglesRequest()
+                    tHuman.upperBodyOnly = true
+                    let tPose = VNDetectHumanBodyPoseRequest()
+                    let tSaliency = VNGenerateObjectnessBasedSaliencyImageRequest()
+                    
+                    let th = VNImageRequestHandler(cgImage: tileCg, options: [:])
+                    try? th.perform([tFace, tHuman, tPose, tSaliency])
+                    
+                    // A. Face Detections
+                    for f in (tFace.results ?? []) {
+                        if f.confidence >= tileThresh {
+                            let b = f.boundingBox
+                            let normX = (CGFloat(c) * tileW + (b.origin.x - b.width * 0.15) * tileW) / fullW
+                            let normY = 1.0 - ((CGFloat(r + 1) * tileH) - (b.origin.y - b.height * 0.15) * tileH) / fullH
+                            let normW = (b.width * 1.3 * tileW) / fullW
+                            let normH = (b.height * 1.6 * tileH) / fullH
+                            
+                            rawBoxes.append(CGRect(x: max(0, normX), y: max(0, normY), width: min(0.18, normW), height: min(0.25, normH)))
+                        }
                     }
-                }
-                
-                for h in (tHuman.results ?? []) {
-                    if h.confidence >= tileThresh {
-                        let b = h.boundingBox
-                        let normX = (CGFloat(c) * tileW + b.origin.x * tileW) / fullW
-                        let normY = 1.0 - ((CGFloat(r + 1) * tileH) - b.origin.y * tileH) / fullH
-                        let normW = (b.width * tileW) / fullW
-                        let normH = (b.height * tileH) / fullH
-                        
-                        rawBoxes.append(CGRect(x: max(0, normX), y: max(0, normY), width: min(0.22, normW), height: min(0.30, normH)))
+                    
+                    // B. Upper Body Detections
+                    for h in (tHuman.results ?? []) {
+                        if h.confidence >= tileThresh {
+                            let b = h.boundingBox
+                            let normX = (CGFloat(c) * tileW + b.origin.x * tileW) / fullW
+                            let normY = 1.0 - ((CGFloat(r + 1) * tileH) - b.origin.y * tileH) / fullH
+                            let normW = (b.width * tileW) / fullW
+                            let normH = (b.height * tileH) / fullH
+                            
+                            rawBoxes.append(CGRect(x: max(0, normX), y: max(0, normY), width: min(0.22, normW), height: min(0.30, normH)))
+                        }
+                    }
+                    
+                    // C. Back-of-Head Pose Keypoints Detections
+                    for obs in (tPose.results ?? []) {
+                        if let points = try? obs.recognizedPoints(forGroupKey: .all) {
+                            let valid = points.values.filter { $0.confidence > 0.005 }
+                            if valid.count >= 2 {
+                                let xs = valid.map { CGFloat($0.location.x) }
+                                let ys = valid.map { CGFloat($0.location.y) }
+                                let minX = xs.min()!
+                                let maxX = xs.max()!
+                                let minY = ys.min()!
+                                let maxY = ys.max()!
+                                
+                                let normX = (CGFloat(c) * tileW + (minX - 0.02) * tileW) / fullW
+                                let normY = 1.0 - ((CGFloat(r + 1) * tileH) - (minY - 0.03) * tileH) / fullH
+                                let normW = ((maxX - minX + 0.04) * tileW) / fullW
+                                let normH = ((maxY - minY + 0.06) * tileH) / fullH
+                                
+                                rawBoxes.append(CGRect(x: max(0, normX), y: max(0, normY), width: min(0.20, normW), height: min(0.28, normH)))
+                            }
+                        }
+                    }
+                    
+                    // D. Objectness Saliency
+                    if isAudienceArea, let salObs = tSaliency.results?.first, let objects = salObs.salientObjects {
+                        for obj in objects {
+                            if obj.confidence >= 0.10 {
+                                let b = obj.boundingBox
+                                let normX = (CGFloat(c) * tileW + b.origin.x * tileW) / fullW
+                                let normY = 1.0 - ((CGFloat(r + 1) * tileH) - b.origin.y * tileH) / fullH
+                                let normW = (b.width * tileW) / fullW
+                                let normH = (b.height * tileH) / fullH
+                                
+                                if normW >= 0.015 && normH >= 0.02 && normW <= 0.20 && normH <= 0.28 {
+                                    rawBoxes.append(CGRect(x: max(0, normX), y: max(0, normY), width: normW, height: normH))
+                                }
+                            }
+                        }
                     }
                 }
             }

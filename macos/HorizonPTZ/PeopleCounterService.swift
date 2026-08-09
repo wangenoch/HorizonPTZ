@@ -1,6 +1,109 @@
 import Foundation
 import AppKit
 import Vision
+import CoreML
+
+final class CoreMLYoloDetector {
+    static let shared = CoreMLYoloDetector()
+    private var visionModel: VNCoreMLModel?
+    
+    private init() {
+        let candidatePaths = [
+            Bundle.main.url(forResource: "yolov8n", withExtension: "mlmodelc"),
+            URL(fileURLWithPath: "/tmp/yolov8n.mlmodelc"),
+            URL(fileURLWithPath: "/Users/enoch/AndroidStudioProjects/HorizonPTZ/macos/HorizonPTZ/yolov8n.mlmodelc"),
+            URL(fileURLWithPath: "/Users/enoch/Desktop/HorizonPTZ.app/Contents/Resources/yolov8n.mlmodelc")
+        ]
+        
+        for path in candidatePaths {
+            if let url = path, FileManager.default.fileExists(atPath: url.path) {
+                if let mlModel = try? MLModel(contentsOf: url),
+                   let vModel = try? VNCoreMLModel(for: mlModel) {
+                    self.visionModel = vModel
+                    print("🚀 [CoreMLYoloDetector] CoreML YOLO model loaded from: \(url.path)")
+                    break
+                }
+            }
+        }
+    }
+    
+    func detect(cgImage: CGImage) -> [CGRect] {
+        guard let visionModel = visionModel else { return [] }
+        var resultBoxes: [CGRect] = []
+        
+        let request = VNCoreMLRequest(model: visionModel) { req, err in
+            guard let observations = req.results else { return }
+            for obs in observations {
+                if let featureObs = obs as? VNCoreMLFeatureValueObservation,
+                   let multiArray = featureObs.featureValue.multiArrayValue {
+                    let boxes = self.parseYoloTensor(multiArray: multiArray)
+                    resultBoxes.append(contentsOf: boxes)
+                } else if let recognizedObs = obs as? VNRecognizedObjectObservation {
+                    for label in recognizedObs.labels {
+                        if (label.identifier == "person" || label.identifier == "0") && recognizedObs.confidence > 0.25 {
+                            resultBoxes.append(recognizedObs.boundingBox)
+                        }
+                    }
+                }
+            }
+        }
+        
+        request.imageCropAndScaleOption = .scaleFill
+        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+        try? handler.perform([request])
+        
+        return resultBoxes
+    }
+    
+    private func parseYoloTensor(multiArray: MLMultiArray) -> [CGRect] {
+        var rawBoxes: [CGRect] = []
+        let strides = multiArray.strides.map { $0.intValue }
+        let ptr = multiArray.dataPointer.bindMemory(to: Float.self, capacity: multiArray.count)
+        
+        let numAnchors = 8400
+        let strideChannel = strides.count > 1 ? strides[1] : 8400
+        let strideAnchor = strides.count > 2 ? strides[2] : 1
+        
+        for i in 0..<numAnchors {
+            let personScore = ptr[4 * strideChannel + i * strideAnchor]
+            if personScore > 0.25 {
+                let cx = ptr[0 * strideChannel + i * strideAnchor] / 640.0
+                let cy = ptr[1 * strideChannel + i * strideAnchor] / 640.0
+                let w  = ptr[2 * strideChannel + i * strideAnchor] / 640.0
+                let h  = ptr[3 * strideChannel + i * strideAnchor] / 640.0
+                
+                let normX = CGFloat(max(0, cx - w / 2.0))
+                let normY = CGFloat(max(0, (1.0 - cy) - h / 2.0))
+                let normW = CGFloat(min(0.24, w))
+                let normH = CGFloat(min(0.38, h))
+                
+                rawBoxes.append(CGRect(x: normX, y: normY, width: normW, height: normH))
+            }
+        }
+        
+        // Non-Maximum Suppression (NMS)
+        var finalBoxes: [CGRect] = []
+        let sorted = rawBoxes.sorted { ($0.width * $0.height) < ($1.width * $1.height) }
+        for b in sorted {
+            var keep = true
+            for k in finalBoxes {
+                let inter = b.intersection(k)
+                if !inter.isNull {
+                    let interArea = inter.width * inter.height
+                    let minArea = min(b.width * b.height, k.width * k.height)
+                    if (interArea / minArea) > 0.40 {
+                        keep = false
+                        break
+                    }
+                }
+            }
+            if keep {
+                finalBoxes.append(b)
+            }
+        }
+        return finalBoxes
+    }
+}
 
 enum AiEngineMode: String, CaseIterable, Identifiable {
     case appleVision = "Apple Vision (原生 360°)"
@@ -197,6 +300,10 @@ class PeopleCounterService: ObservableObject {
     }
     
     private func runCoreMLYoloInference(cgImage: CGImage) -> [CGRect] {
+        let yoloBoxes = CoreMLYoloDetector.shared.detect(cgImage: cgImage)
+        if !yoloBoxes.isEmpty {
+            return yoloBoxes
+        }
         return runPrecisionDetection(cgImage: cgImage)
     }
     
@@ -313,74 +420,32 @@ class PeopleCounterService: ObservableObject {
             return area >= 0.0006 && !isCeiling && !isDoorFrame && !isKeyboardStand && !isMiddleEquipment && !isGiantCluster
         }
         
-        // 4. Selective Vertical Column Fusion (Applies ONLY to tall presenter on stage)
-        var fusedBoxes: [CGRect] = []
-        let sortedByArea = validBoxes.sorted { ($0.width * $0.height) > ($1.width * $1.height) }
-        
-        for b in sortedByArea {
-            var absorbedIdx: Int? = nil
-            for (idx, existing) in fusedBoxes.enumerated() {
-                let intersection = b.intersection(existing)
-                let centerDx = abs(b.midX - existing.midX)
-                let centerDy = abs(b.midY - existing.midY)
-                let maxW = max(b.width, existing.width)
-                let maxH = max(b.height, existing.height)
-                
-                // Only fuse tall presenter bodies (height > 0.42)
-                let isTallPresenter = (maxH > 0.42 && existing.origin.x > 0.55)
-                let isSamePersonColumn = isTallPresenter && (centerDx < maxW * 0.50 && centerDy < maxH * 0.80)
-                let isOverlapping = !intersection.isNull && (intersection.width * intersection.height / min(b.width * b.height, existing.width * existing.height) > 0.50)
-                
-                if isSamePersonColumn || isOverlapping {
-                    absorbedIdx = idx
-                    break
-                }
-            }
-            
-            if let idx = absorbedIdx {
-                let e = fusedBoxes[idx]
-                let newMinX = min(e.minX, b.minX)
-                let newMinY = min(e.minY, b.minY)
-                let newMaxX = max(e.maxX, b.maxX)
-                let newMaxY = max(e.maxY, b.maxY)
-                
-                if (newMaxX - newMinX) <= 0.65 {
-                    fusedBoxes[idx] = CGRect(x: newMinX, y: newMinY, width: newMaxX - newMinX, height: newMaxY - newMinY)
-                } else {
-                    fusedBoxes.append(b)
-                }
-            } else {
-                fusedBoxes.append(b)
-            }
-        }
-        
-        // 5. STRICT CONTAINMENT & SUB-BOX SUPPRESSION (Eliminates guitar soundhole box inside presenter body)
-        let sortedFused = fusedBoxes.sorted { ($0.width * $0.height) > ($1.width * $1.height) }
+        // 4. Non-Maximum Suppression (NMS) & Strict Single-Person Box Caps (No Giant Boxes!)
         var keptBoxes: [CGRect] = []
         
-        for b in sortedFused {
-            var isContained = false
-            for k in keptBoxes {
-                let intersection = b.intersection(k)
+        // Sort candidates: prioritize face/head/person boxes with realistic single-person aspect ratios
+        let candidates = validBoxes.filter { b in
+            // Absolute hard cap: No person box in CAM 01 wide view can ever exceed width 0.24 or height 0.40!
+            return b.width <= 0.24 && b.height <= 0.40
+        }.sorted { ($0.width * $0.height) < ($1.width * $1.height) } // Prioritize tight individual head/body boxes
+        
+        for b in candidates {
+            var shouldKeep = true
+            for existing in keptBoxes {
+                let intersection = b.intersection(existing)
                 if !intersection.isNull {
                     let interArea = intersection.width * intersection.height
-                    let bArea = b.width * b.height
-                    
-                    let bCenterInsideK = k.contains(CGPoint(x: b.midX, y: b.midY)) && (b.width < k.width * 0.70 && b.height < k.height * 0.70)
-                    let isOverlapContained = (interArea / bArea) > 0.50
-                    
-                    if bCenterInsideK || isOverlapContained {
-                        isContained = true
+                    let minArea = min(b.width * b.height, existing.width * existing.height)
+                    if (interArea / minArea) > 0.45 {
+                        shouldKeep = false
                         break
                     }
                 }
             }
-            
-            if !isContained {
+            if shouldKeep {
                 keptBoxes.append(b)
             }
         }
-        
         return keptBoxes
     }
 }

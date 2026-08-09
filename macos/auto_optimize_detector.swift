@@ -12,7 +12,7 @@ guard let nsImage = NSImage(contentsOfFile: imagePath),
 let w = CGFloat(cgImage.width)
 let h = CGFloat(cgImage.height)
 
-print("=== AUTOMATED DETECTOR OPTIMIZER ===")
+print("=== INDUSTRY BEST-PRACTICE DENSE CROWD & SINGLE SPEAKER OPTIMIZER ===")
 print("Screen capture size: \(w) x \(h)")
 
 let cam1Rect = CGRect(x: w * 0.04, y: h * 0.22, width: w * 0.43, height: h * 0.38)
@@ -30,11 +30,11 @@ struct BBox {
     var label: String
 }
 
-func optimizeDetection(cgImage: CGImage, cameraName: String) -> [CGRect] {
-    print("\n--- Optimizing \(cameraName) ---")
+func runIndustryOptimizedDetection(cgImage: CGImage, cameraName: String) -> [CGRect] {
+    print("\n--- Processing \(cameraName) ---")
     var rawBoxes: [BBox] = []
     
-    // Pass 1: Full Image Pass (Stage & Standing Presenter Pass, confidence = 0.08)
+    // 1. Pass 1: Global Full Body & Upper Body Pass
     let reqFull = VNDetectHumanRectanglesRequest()
     reqFull.upperBodyOnly = false
     let reqUpper = VNDetectHumanRectanglesRequest()
@@ -45,28 +45,28 @@ func optimizeDetection(cgImage: CGImage, cameraName: String) -> [CGRect] {
     try? handler.perform([reqFull, reqUpper, reqFace])
     
     for r in (reqFull.results ?? []) {
-        if r.confidence >= 0.08 {
+        if r.confidence >= 0.03 {
             rawBoxes.append(BBox(rect: r.boundingBox, confidence: r.confidence, label: "FullBody"))
         }
     }
     for r in (reqUpper.results ?? []) {
-        if r.confidence >= 0.08 {
+        if r.confidence >= 0.03 {
             rawBoxes.append(BBox(rect: r.boundingBox, confidence: r.confidence, label: "UpperBody"))
         }
     }
     for f in (reqFace.results ?? []) {
-        if f.confidence >= 0.08 {
+        if f.confidence >= 0.03 {
             let b = f.boundingBox
-            let headBox = CGRect(x: max(0, b.origin.x - b.width*0.2),
-                                 y: max(0, b.origin.y - b.height*0.2),
-                                 width: min(1.0 - b.origin.x, b.width * 1.4),
-                                 height: min(1.0 - b.origin.y, b.height * 1.8))
+            let headBox = CGRect(x: max(0, b.origin.x - b.width*0.3),
+                                 y: max(0, b.origin.y - b.height*0.3),
+                                 width: min(1.0 - b.origin.x, b.width * 1.6),
+                                 height: min(1.0 - b.origin.y, b.height * 2.0))
             rawBoxes.append(BBox(rect: headBox, confidence: f.confidence, label: "FaceHead"))
         }
     }
     
-    // Pass 2: Adaptive Regional Confidence Grid Tiling (3x3 Tiles)
-    let cols = 3
+    // 2. Pass 2: 4x3 Multi-scale Dense Grid Tiling (Extremely High Sensitivity for Audience Seating)
+    let cols = 4
     let rows = 3
     let tileW = cgImage.width / cols
     let tileH = cgImage.height / rows
@@ -76,10 +76,9 @@ func optimizeDetection(cgImage: CGImage, cameraName: String) -> [CGRect] {
             let tileRect = CGRect(x: c * tileW, y: r * tileH, width: tileW, height: tileH)
             guard let tileCg = cgImage.cropping(to: tileRect) else { continue }
             
-            // In audience seating area (bottom 2 rows in Vision y-up space), use high sensitivity (0.015)
-            // In upper stage/wall area, use conservative threshold (0.08) to prevent wall noise
+            // Audience seating is bottom 2 rows (r <= 1) in Vision y-up coordinates
             let isAudienceArea = (r <= 1)
-            let tileThresh: Float = isAudienceArea ? 0.015 : 0.08
+            let tileThresh: Float = isAudienceArea ? 0.01 : 0.06
             
             let tFull = VNDetectHumanRectanglesRequest()
             tFull.upperBodyOnly = false
@@ -115,10 +114,10 @@ func optimizeDetection(cgImage: CGImage, cameraName: String) -> [CGRect] {
             for f in (tFace.results ?? []) {
                 if f.confidence >= tileThresh {
                     let b = f.boundingBox
-                    let normX = (CGFloat(c * tileW) + (b.origin.x - b.width*0.2) * CGFloat(tileW)) / CGFloat(cgImage.width)
-                    let normY = (CGFloat(r * tileH) + (b.origin.y - b.height*0.2) * CGFloat(tileH)) / CGFloat(cgImage.height)
-                    let normW = (b.width * 1.4 * CGFloat(tileW)) / CGFloat(cgImage.width)
-                    let normH = (b.height * 1.8 * CGFloat(tileH)) / CGFloat(cgImage.height)
+                    let normX = (CGFloat(c * tileW) + (b.origin.x - b.width*0.3) * CGFloat(tileW)) / CGFloat(cgImage.width)
+                    let normY = (CGFloat(r * tileH) + (b.origin.y - b.height*0.3) * CGFloat(tileH)) / CGFloat(cgImage.height)
+                    let normW = (b.width * 1.6 * CGFloat(tileW)) / CGFloat(cgImage.width)
+                    let normH = (b.height * 2.0 * CGFloat(tileH)) / CGFloat(cgImage.height)
                     rawBoxes.append(BBox(rect: CGRect(x: normX, y: normY, width: normW, height: normH), confidence: f.confidence, label: "TileFace"))
                 }
             }
@@ -127,46 +126,56 @@ func optimizeDetection(cgImage: CGImage, cameraName: String) -> [CGRect] {
     
     print("Raw detections collected: \(rawBoxes.count)")
     
-    // Filter out ceiling wall noise (y > 0.82)
+    // Filter ceiling noise (y > 0.82)
     let validBoxes = rawBoxes.filter { b in
         let r = b.rect
-        return r.origin.y + r.height < 0.82 && r.width * r.height >= 0.002
+        return r.origin.y + r.height < 0.82 && r.width * r.height >= 0.0015
     }
     
-    // === VERTICAL CONTAINMENT & OVERLAP MERGING (Zero Body Slicing!) ===
-    var mergedBoxes: [BBox] = []
+    // 3. Dominant Vertical Human Column Fusion (Fixes 1 person sliced into 2-3 parts!)
+    // If Box A and Box B belong to the exact same vertical column (centerX distance < 35% of width)
+    // AND they overlap vertically, MERGE THEM INTO A SINGLE ENCLOSING BODY BOX!
+    var finalBoxes: [CGRect] = []
     let sortedByArea = validBoxes.sorted { ($0.rect.width * $0.rect.height) > ($1.rect.width * $1.rect.height) }
     
     for b in sortedByArea {
-        var isContainedInLarger = false
-        for m in mergedBoxes {
-            let intersection = b.rect.intersection(m.rect)
+        var mergedIdx: Int? = nil
+        for (idx, existing) in finalBoxes.enumerated() {
+            let intersection = b.rect.intersection(existing)
             if !intersection.isNull {
-                let interArea = intersection.width * intersection.height
-                let bArea = b.rect.width * b.rect.height
-                let verticalOverlap = intersection.height / b.rect.height
-                let horizontalOverlap = intersection.width / b.rect.width
+                let centerDx = abs(b.rect.midX - existing.midX)
+                let maxW = max(b.rect.width, existing.width)
+                let vertOverlap = intersection.height / min(b.rect.height, existing.height)
                 
-                // If smaller box is >40% covered by larger box OR >50% vertically overlapping in same column
-                if (interArea / bArea > 0.35) || (verticalOverlap > 0.50 && horizontalOverlap > 0.50) {
-                    isContainedInLarger = true
+                // Same vertical human column test (center distance < 0.45 maxW & vertOverlap > 0.35)
+                if centerDx < maxW * 0.45 && vertOverlap > 0.35 {
+                    mergedIdx = idx
                     break
                 }
             }
         }
-        if !isContainedInLarger {
-            mergedBoxes.append(b)
+        
+        if let idx = mergedIdx {
+            // Expand existing box to enclose both upper and lower body parts!
+            let e = finalBoxes[idx]
+            let u = b.rect
+            let newMinX = min(e.minX, u.minX)
+            let newMinY = min(e.minY, u.minY)
+            let newMaxX = max(e.maxX, u.maxX)
+            let newMaxY = max(e.maxY, u.maxY)
+            finalBoxes[idx] = CGRect(x: newMinX, y: newMinY, width: newMaxX - newMinX, height: newMaxY - newMinY)
+        } else {
+            finalBoxes.append(b.rect)
         }
     }
     
-    print("After Vertical Containment Merging: \(mergedBoxes.count) clean single-person boxes!")
-    
-    return mergedBoxes.map { $0.rect }
+    print("After Dominant Column Fusion: \(finalBoxes.count) clean human boxes!")
+    return finalBoxes
 }
 
-let res1 = optimizeDetection(cgImage: cam1Cg, cameraName: "CAM 01 (Left)")
-let res2 = optimizeDetection(cgImage: cam2Cg, cameraName: "CAM 02 (Right)")
+let res1 = runIndustryOptimizedDetection(cgImage: cam1Cg, cameraName: "CAM 01 (Left)")
+let res2 = runIndustryOptimizedDetection(cgImage: cam2Cg, cameraName: "CAM 02 (Right)")
 
-print("\n=== OPTIMIZER SUMMARY RESULTS ===")
+print("\n=== FINAL TEST RESULTS ===")
 print("CAM 01 Final People Count: \(res1.count)")
 print("CAM 02 Final People Count: \(res2.count)")

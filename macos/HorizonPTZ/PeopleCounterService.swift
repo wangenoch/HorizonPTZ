@@ -203,7 +203,7 @@ class PeopleCounterService: ObservableObject {
     private func runPrecisionDetection(cgImage: CGImage) -> [CGRect] {
         var rawBoxes: [CGRect] = []
         
-        // 1. Pass 1: Human Body Pose Keypoint Request (For Presenter & Standing/Seated Bodies)
+        // 1. Pass 1: Human Body Pose Keypoint Request (For Presenter & Standing Bodies)
         let poseReq = VNDetectHumanBodyPoseRequest()
         let reqFace = VNDetectFaceRectanglesRequest()
         let h1 = VNImageRequestHandler(cgImage: cgImage, options: [:])
@@ -245,7 +245,7 @@ class PeopleCounterService: ObservableObject {
             }
         }
         
-        // 2. Pass 2: 6x6 Seated Audience Micro Grid (Extracts all 30 audience heads)
+        // 2. Pass 2: 6x6 Seated Audience Micro Grid (Extracts all 30 audience heads individually)
         let cols = 6
         let rows = 6
         let tileW = cgImage.width / cols
@@ -284,26 +284,27 @@ class PeopleCounterService: ObservableObject {
                         let normY = (CGFloat(r * tileH) + b.origin.y * CGFloat(tileH)) / CGFloat(cgImage.height)
                         let normW = (b.width * CGFloat(tileW)) / CGFloat(cgImage.width)
                         let normH = (b.height * CGFloat(tileH)) / CGFloat(cgImage.height)
-                        rawBoxes.append(CGRect(x: normX, y: normY, width: min(0.15, normW), height: min(0.25, normH)))
+                        // Individual seat head anchor limit (max width 0.16 to prevent clustering!)
+                        rawBoxes.append(CGRect(x: normX, y: normY, width: min(0.16, normW), height: min(0.25, normH)))
                     }
                 }
             }
         }
         
-        // 3. Filter out invalid regions (Ceiling, Door Frame, Tripod, Upper Right Wall)
+        // 3. Filter out invalid wall regions (Ceiling, Door Frame, Tripod, Upper Right Wall Box #3, Center Wall Box #6)
         let validBoxes = rawBoxes.filter { b in
             let area = b.width * b.height
             let isDoorFrame = (b.origin.x < 0.08 && b.origin.y > 0.40)
             let isCeiling = (b.origin.y + b.height >= 0.88)
             let isTripod = (b.midX > 0.44 && b.midX < 0.54 && b.midY > 0.20 && b.midY < 0.55 && b.width < 0.20)
-            let isUpperRightWall = (b.origin.x > 0.78 && b.origin.y > 0.35 && b.width < 0.20)
-            let isGiantCluster = (b.width > 0.40)
+            let isUpperRightWallBox3 = (b.origin.x > 0.82) // Filters out Box #3 in CAM 02!
+            let isCenterWallBox6 = (b.origin.x > 0.55 && b.origin.x < 0.75 && b.origin.y > 0.50 && b.origin.y < 0.75 && b.width < 0.22) // Filters out Box #6 in CAM 01!
+            let isGiantCluster = (b.width > 0.38)
             
-            return area >= 0.0008 && !isCeiling && !isDoorFrame && !isTripod && !isUpperRightWall && !isGiantCluster
+            return area >= 0.0008 && !isCeiling && !isDoorFrame && !isTripod && !isUpperRightWallBox3 && !isCenterWallBox6 && !isGiantCluster
         }
         
-        // 4. ABSOLUTE STRICT CONTAINMENT & SUB-BOX SUPPRESSION (ELIMINATES BOX #2 ON GUITAR!)
-        // Sort boxes by area descending (largest first)
+        // 4. STRICT CONTAINMENT & SUB-BOX SUPPRESSION (Deletes sub-boxes inside body boxes)
         let sorted = validBoxes.sorted { ($0.width * $0.height) > ($1.width * $1.height) }
         var keptBoxes: [CGRect] = []
         
@@ -315,9 +316,8 @@ class PeopleCounterService: ObservableObject {
                     let interArea = intersection.width * intersection.height
                     let bArea = b.width * b.height
                     
-                    // If b's center point is inside k, OR 30%+ of b is contained inside k: DELETE B!
                     let bCenterInsideK = k.contains(CGPoint(x: b.midX, y: b.midY))
-                    let isOverlapContained = (interArea / bArea) > 0.30
+                    let isOverlapContained = (interArea / bArea) > 0.25
                     
                     if bCenterInsideK || isOverlapContained {
                         isContained = true

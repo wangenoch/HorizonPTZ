@@ -16,7 +16,7 @@ func runDetectionOnImage(cgImage: CGImage) -> (cam1Boxes: [CGRect], cam2Boxes: [
         return ([], [])
     }
     
-    func getCleanBoxes(cg: CGImage, isCam2: Bool) -> [CGRect] {
+    func getCleanBoxes(cg: CGImage) -> [CGRect] {
         var rawBoxes: [CGRect] = []
         let poseReq = VNDetectHumanBodyPoseRequest()
         let faceReq = VNDetectFaceRectanglesRequest()
@@ -25,7 +25,7 @@ func runDetectionOnImage(cgImage: CGImage) -> (cam1Boxes: [CGRect], cam2Boxes: [
         
         for obs in (poseReq.results ?? []) {
             if let points = try? obs.recognizedPoints(forGroupKey: .all) {
-                let valid = points.values.filter { $0.confidence > 0.15 }
+                let valid = points.values.filter { $0.confidence > 0.02 }
                 if valid.count >= 2 {
                     let xs = valid.map { CGFloat($0.location.x) }
                     let ys = valid.map { CGFloat($0.location.y) }
@@ -39,24 +39,22 @@ func runDetectionOnImage(cgImage: CGImage) -> (cam1Boxes: [CGRect], cam2Boxes: [
         }
         
         for f in (faceReq.results ?? []) {
-            if f.confidence >= 0.03 {
+            if f.confidence >= 0.01 {
                 let b = f.boundingBox
-                rawBoxes.append(CGRect(x: max(0, b.origin.x - b.width*0.20), y: max(0, b.origin.y - b.height*0.20), width: min(0.18, b.width * 1.4), height: min(0.24, b.height * 1.8)))
+                rawBoxes.append(CGRect(x: max(0, b.origin.x - b.width*0.20), y: max(0, b.origin.y - b.height*0.20), width: min(0.25, b.width * 1.4), height: min(0.35, b.height * 1.8)))
             }
         }
         
-        // Filter rules
         let valid = rawBoxes.filter { b in
             let area = b.width * b.height
             let isDoorFrame = (b.origin.x < 0.08 && b.origin.y > 0.40)
             let isCeiling = (b.origin.y + b.height >= 0.88)
             let isTripod = (b.midX > 0.44 && b.midX < 0.54 && b.midY > 0.20 && b.midY < 0.55 && b.width < 0.20)
-            let isGiantCluster = (b.width > 0.40)
+            let isGiantCluster = (b.width > 0.45)
             
             return area >= 0.0008 && !isCeiling && !isDoorFrame && !isTripod && !isGiantCluster
         }
         
-        // Column fusion
         var fused: [CGRect] = []
         for b in valid.sorted(by: { ($0.width * $0.height) > ($1.width * $1.height) }) {
             var absorbed: Int? = nil
@@ -89,7 +87,6 @@ func runDetectionOnImage(cgImage: CGImage) -> (cam1Boxes: [CGRect], cam2Boxes: [
             }
         }
         
-        // Containment suppression
         var kept: [CGRect] = []
         for b in fused.sorted(by: { ($0.width * $0.height) > ($1.width * $1.height) }) {
             var isContained = false
@@ -111,7 +108,7 @@ func runDetectionOnImage(cgImage: CGImage) -> (cam1Boxes: [CGRect], cam2Boxes: [
         return kept
     }
     
-    return (getCleanBoxes(cg: cam1Cg, isCam2: false), getCleanBoxes(cg: cam2Cg, isCam2: true))
+    return (getCleanBoxes(cg: cam1Cg), getCleanBoxes(cg: cam2Cg))
 }
 
 var allPassed = true

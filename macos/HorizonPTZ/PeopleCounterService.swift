@@ -297,15 +297,20 @@ class PeopleCounterService: ObservableObject {
             }
         }
         
-        // 3. Filter out invalid background noise (Ceiling, Door Frames, Central Equipment Cart)
+        // 3. Filter out invalid background noise (Ceiling, Door Frames, Keyboard Stand, High Background Equipment Stand)
         let validBoxes = rawBoxes.filter { b in
             let area = b.width * b.height
-            let isDoorFrame = (b.origin.x < 0.06 && b.origin.y > 0.40) || (b.origin.x > 0.90)
-            let isCeiling = (b.origin.y + b.height >= 0.88)
-            let isMiddleEquipment = (b.midX > 0.33 && b.midX < 0.52 && b.midY > 0.25 && b.midY < 0.75 && b.height < 0.32)
-            let isGiantCluster = (b.width > 0.50 || b.height > 0.88)
+            let isDoorFrame = (b.origin.x < 0.05 && b.origin.y > 0.40) || (b.origin.x > 0.92)
+            let isCeiling = (b.origin.y + b.height >= 0.90)
             
-            return area >= 0.0010 && !isCeiling && !isDoorFrame && !isMiddleEquipment && !isGiantCluster
+            // Electronic keyboard stand in upper-left (x: 0.08..0.32, y: 0.55..0.85)
+            let isKeyboardStand = (b.midX > 0.08 && b.midX < 0.32 && b.midY > 0.55 && b.midY < 0.85 && b.width > 0.16)
+            
+            // Equipment cart & projector stand zone in high background (y: 0.55..0.85) with narrow/thin width
+            let isMiddleEquipment = (b.midX > 0.25 && b.midX < 0.48 && b.midY > 0.55 && b.midY < 0.85 && b.width < 0.22)
+            let isGiantCluster = (b.width > 0.55 || b.height > 0.88)
+            
+            return area >= 0.0006 && !isCeiling && !isDoorFrame && !isKeyboardStand && !isMiddleEquipment && !isGiantCluster
         }
         
         // 4. Selective Vertical Column Fusion (Applies ONLY to tall presenter on stage)

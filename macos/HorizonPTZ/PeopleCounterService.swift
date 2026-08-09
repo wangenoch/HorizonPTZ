@@ -25,7 +25,7 @@ class PersonTracker {
     private var featureGallery: [Int: VNFeaturePrintObservation] = [:]
     private var nextId = 1
     private let maxDisappeared = 8
-    private let minConfirmedFrames = 2 // Anti-flicker: Must be confirmed across 2 frames to eliminate noise!
+    private let minConfirmedFrames = 1 // Immediate detection response for crowds!
     
     func update(with newBoxes: [CGRect], cgImage: CGImage, distThreshold: CGFloat, alpha: CGFloat, isReIdEnabled: Bool, reIdSimilarity: Float) -> [(id: Int, box: CGRect)] {
         if trackedPeople.isEmpty {
@@ -33,7 +33,7 @@ class PersonTracker {
                 let assignedId = resolveOrAssignId(for: box, cgImage: cgImage, isReIdEnabled: isReIdEnabled, reIdSimilarity: reIdSimilarity)
                 trackedPeople.append(InternalTrackedPerson(id: assignedId, box: box, disappeared: 0, confirmedFrames: 1))
             }
-            return []
+            return trackedPeople.map { ($0.id, $0.box) }
         }
         
         var matches: [(trackedIdx: Int, newBoxIdx: Int, distance: CGFloat)] = []
@@ -49,7 +49,7 @@ class PersonTracker {
                 let intersection = person.box.intersection(newBox)
                 let iou = intersection.isNull ? 0 : (intersection.width * intersection.height) / (person.box.width * person.box.height)
                 
-                if dist < distThreshold || iou > 0.18 {
+                if dist < distThreshold || iou > 0.15 {
                     matches.append((tIdx, nIdx, dist))
                 }
             }
@@ -112,7 +112,7 @@ class PersonTracker {
         }
         
         trackedPeople = updatedTracked
-        return trackedPeople.filter { $0.disappeared == 0 && $0.confirmedFrames >= minConfirmedFrames }
+        return trackedPeople.filter { $0.disappeared == 0 }
             .sorted { $0.id < $1.id }
             .map { ($0.id, $0.box) }
     }
@@ -194,8 +194,8 @@ class PeopleCounterService: ObservableObject {
     static let shared = PeopleCounterService()
     
     @Published var currentEngineMode: AiEngineMode = .coreMLYolo
-    @Published var confidenceThreshold: Float = 0.05 // Ultra sensitivity 5% for crowded/dark scenes
-    @Published var minObjectSize: Float = 0.006       // Tiny object threshold 0.6% for crowded seats
+    @Published var confidenceThreshold: Float = 0.04 // Ultra high sensitivity 4% for crowded audience
+    @Published var minObjectSize: Float = 0.003       // Extremely small 0.3% area to capture distant heads
     @Published var samplingFps: Int = 10              // High FPS sampling 10 FPS
     @Published var trackingAlpha: Float = 0.90       // Fast motion tracking weight
     @Published var maxMotionDistance: Float = 0.38   // Fast motion distance matching
@@ -269,16 +269,52 @@ class PeopleCounterService: ObservableObject {
     
     private func runAppleVisionInference(cgImage: CGImage) -> [CGRect] {
         var boxes: [CGRect] = []
-        let request = VNDetectHumanRectanglesRequest()
-        request.upperBodyOnly = false
+        
+        // Request 1: Full Body Human Rectangles
+        let fullBodyReq = VNDetectHumanRectanglesRequest()
+        fullBodyReq.upperBodyOnly = false
+        
+        // Request 2: Upper Body Human Rectangles (Seated audience)
+        let upperBodyReq = VNDetectHumanRectanglesRequest()
+        upperBodyReq.upperBodyOnly = true
+        
+        // Request 3: Face & Head Rectangles (Captures seated faces/heads in rows)
+        let faceReq = VNDetectFaceRectanglesRequest()
         
         let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
         do {
-            try handler.perform([request])
-            if let results = request.results {
+            try handler.perform([fullBodyReq, upperBodyReq, faceReq])
+            
+            // Full Body Results
+            if let results = fullBodyReq.results {
                 for observation in results {
                     if observation.confidence >= self.confidenceThreshold {
                         boxes.append(observation.boundingBox)
+                    }
+                }
+            }
+            
+            // Upper Body Results
+            if let results = upperBodyReq.results {
+                for observation in results {
+                    if observation.confidence >= (self.confidenceThreshold * 0.7) {
+                        boxes.append(observation.boundingBox)
+                    }
+                }
+            }
+            
+            // Face & Head Results -> Pad face to head/shoulder bounding box
+            if let faceResults = faceReq.results {
+                for face in faceResults {
+                    if face.confidence >= (self.confidenceThreshold * 0.6) {
+                        let f = face.boundingBox
+                        let headBox = CGRect(
+                            x: max(0, f.origin.x - f.width * 0.2),
+                            y: max(0, f.origin.y - f.height * 0.3),
+                            width: min(1.0 - f.origin.x, f.width * 1.4),
+                            height: min(1.0 - f.origin.y, f.height * 1.8)
+                        )
+                        boxes.append(headBox)
                     }
                 }
             }
@@ -289,17 +325,48 @@ class PeopleCounterService: ObservableObject {
     }
     
     private func runCoreMLYoloInference(cgImage: CGImage) -> [CGRect] {
+        // Enriched Multi-Modal Detection Engine for Crowds
         var boxes: [CGRect] = []
-        let request = VNDetectHumanRectanglesRequest()
-        request.upperBodyOnly = true
+        
+        let fullBodyReq = VNDetectHumanRectanglesRequest()
+        fullBodyReq.upperBodyOnly = false
+        
+        let upperBodyReq = VNDetectHumanRectanglesRequest()
+        upperBodyReq.upperBodyOnly = true
+        
+        let faceReq = VNDetectFaceRectanglesRequest()
         
         let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
         do {
-            try handler.perform([request])
-            if let results = request.results {
+            try handler.perform([fullBodyReq, upperBodyReq, faceReq])
+            
+            if let results = fullBodyReq.results {
                 for observation in results {
-                    if observation.confidence >= (self.confidenceThreshold * 0.7) {
+                    if observation.confidence >= (self.confidenceThreshold * 0.5) {
                         boxes.append(observation.boundingBox)
+                    }
+                }
+            }
+            
+            if let results = upperBodyReq.results {
+                for observation in results {
+                    if observation.confidence >= (self.confidenceThreshold * 0.5) {
+                        boxes.append(observation.boundingBox)
+                    }
+                }
+            }
+            
+            if let faceResults = faceReq.results {
+                for face in faceResults {
+                    if face.confidence >= (self.confidenceThreshold * 0.4) {
+                        let f = face.boundingBox
+                        let headBox = CGRect(
+                            x: max(0, f.origin.x - f.width * 0.15),
+                            y: max(0, f.origin.y - f.height * 0.25),
+                            width: min(1.0 - f.origin.x, f.width * 1.3),
+                            height: min(1.0 - f.origin.y, f.height * 1.7)
+                        )
+                        boxes.append(headBox)
                     }
                 }
             }
@@ -310,10 +377,30 @@ class PeopleCounterService: ObservableObject {
     }
     
     private func mergeAndFilterBoxes(_ inputBoxes: [CGRect]) -> [CGRect] {
-        let minArea = CGFloat(self.minObjectSize)
-        let filtered = inputBoxes.filter { box in
+        let minArea = CGFloat(self.minObjectSize) // 0.003 (0.3% screen area)
+        var filtered: [CGRect] = []
+        
+        // Split merged giant boxes (e.g. wide box covering 3 seated people)
+        for box in inputBoxes {
             let area = box.width * box.height
-            return area >= minArea
+            if area < minArea { continue }
+            
+            // If box is unusually wide (>24% screen width), split into 2-3 individual boxes for seated people
+            if box.width > 0.24 && box.width / box.height > 0.85 {
+                let numSplits = Int(ceil(box.width / 0.12))
+                let splitWidth = box.width / CGFloat(numSplits)
+                for i in 0..<numSplits {
+                    let subBox = CGRect(
+                        x: box.origin.x + CGFloat(i) * splitWidth,
+                        y: box.origin.y,
+                        width: splitWidth,
+                        height: box.height
+                    )
+                    filtered.append(subBox)
+                }
+            } else {
+                filtered.append(box)
+            }
         }
         
         var kept: [CGRect] = []
@@ -326,7 +413,7 @@ class PeopleCounterService: ObservableObject {
                 if !intersection.isNull {
                     let interArea = intersection.width * intersection.height
                     let boxArea = box.width * box.height
-                    if interArea / boxArea > 0.70 { // NMS IoU threshold 70%
+                    if interArea / boxArea > 0.55 { // Smart NMS IoU threshold 55%
                         isDuplicate = true
                         break
                     }

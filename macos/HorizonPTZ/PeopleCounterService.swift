@@ -256,7 +256,7 @@ class PeopleCounterService: ObservableObject {
                 let tileRect = CGRect(x: c * tileW, y: r * tileH, width: tileW, height: tileH)
                 guard let tileCg = cgImage.cropping(to: tileRect) else { continue }
                 
-                let isAudienceArea = (r <= 3) // Seating rows in y-up space
+                let isAudienceArea = (r <= 3)
                 let tileThresh: Float = isAudienceArea ? 0.015 : 0.05
                 
                 let tFace = VNDetectFaceRectanglesRequest()
@@ -284,31 +284,69 @@ class PeopleCounterService: ObservableObject {
                         let normY = (CGFloat(r * tileH) + b.origin.y * CGFloat(tileH)) / CGFloat(cgImage.height)
                         let normW = (b.width * CGFloat(tileW)) / CGFloat(cgImage.width)
                         let normH = (b.height * CGFloat(tileH)) / CGFloat(cgImage.height)
-                        // Individual seat head anchor limit (max width 0.16 to prevent clustering!)
                         rawBoxes.append(CGRect(x: normX, y: normY, width: min(0.16, normW), height: min(0.25, normH)))
                     }
                 }
             }
         }
         
-        // 3. Filter out invalid wall regions (Ceiling, Door Frame, Tripod, Upper Right Wall Box #3, Center Wall Box #6)
+        // 3. Filter out invalid wall regions
         let validBoxes = rawBoxes.filter { b in
             let area = b.width * b.height
             let isDoorFrame = (b.origin.x < 0.08 && b.origin.y > 0.40)
             let isCeiling = (b.origin.y + b.height >= 0.88)
             let isTripod = (b.midX > 0.44 && b.midX < 0.54 && b.midY > 0.20 && b.midY < 0.55 && b.width < 0.20)
-            let isUpperRightWallBox3 = (b.origin.x > 0.82) // Filters out Box #3 in CAM 02!
-            let isCenterWallBox6 = (b.origin.x > 0.55 && b.origin.x < 0.75 && b.origin.y > 0.50 && b.origin.y < 0.75 && b.width < 0.22) // Filters out Box #6 in CAM 01!
+            let isRightWall = (b.origin.x > 0.78)
+            let isCenterWallBox6 = (b.origin.x > 0.55 && b.origin.x < 0.75 && b.origin.y > 0.50 && b.origin.y < 0.75 && b.width < 0.22)
             let isGiantCluster = (b.width > 0.38)
             
-            return area >= 0.0008 && !isCeiling && !isDoorFrame && !isTripod && !isUpperRightWallBox3 && !isCenterWallBox6 && !isGiantCluster
+            return area >= 0.0008 && !isCeiling && !isDoorFrame && !isTripod && !isRightWall && !isCenterWallBox6 && !isGiantCluster
         }
         
-        // 4. STRICT CONTAINMENT & SUB-BOX SUPPRESSION (Deletes sub-boxes inside body boxes)
-        let sorted = validBoxes.sorted { ($0.width * $0.height) > ($1.width * $1.height) }
+        // 4. Single Speaker Vertical Column Fusion
+        var fusedBoxes: [CGRect] = []
+        let sortedByArea = validBoxes.sorted { ($0.width * $0.height) > ($1.width * $1.height) }
+        
+        for b in sortedByArea {
+            var absorbedIdx: Int? = nil
+            for (idx, existing) in fusedBoxes.enumerated() {
+                let intersection = b.intersection(existing)
+                let centerDx = abs(b.midX - existing.midX)
+                let centerDy = abs(b.midY - existing.midY)
+                let maxW = max(b.width, existing.width)
+                let maxH = max(b.height, existing.height)
+                
+                let isSamePersonColumn = (centerDx < maxW * 0.55 && centerDy < maxH * 0.85)
+                let isOverlapping = !intersection.isNull && (intersection.width * intersection.height / min(b.width * b.height, existing.width * existing.height) > 0.25)
+                
+                if isSamePersonColumn || isOverlapping {
+                    absorbedIdx = idx
+                    break
+                }
+            }
+            
+            if let idx = absorbedIdx {
+                let e = fusedBoxes[idx]
+                let newMinX = min(e.minX, b.minX)
+                let newMinY = min(e.minY, b.minY)
+                let newMaxX = max(e.maxX, b.maxX)
+                let newMaxY = max(e.maxY, b.maxY)
+                
+                if (newMaxX - newMinX) <= 0.65 {
+                    fusedBoxes[idx] = CGRect(x: newMinX, y: newMinY, width: newMaxX - newMinX, height: newMaxY - newMinY)
+                } else {
+                    fusedBoxes.append(b)
+                }
+            } else {
+                fusedBoxes.append(b)
+            }
+        }
+        
+        // 5. STRICT CONTAINMENT & SUB-BOX SUPPRESSION (Eliminates guitar sub-box inside presenter body)
+        let sortedFused = fusedBoxes.sorted { ($0.width * $0.height) > ($1.width * $1.height) }
         var keptBoxes: [CGRect] = []
         
-        for b in sorted {
+        for b in sortedFused {
             var isContained = false
             for k in keptBoxes {
                 let intersection = b.intersection(k)

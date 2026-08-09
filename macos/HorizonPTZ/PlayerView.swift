@@ -37,6 +37,7 @@ class PipeStreamManager {
     private var processes: [Int: Process] = [:]
     private var pipes: [Int: Pipe] = [:]
     private var frameCounters: [Int: Int] = [:]
+    private let lock = NSLock()
     
     func startStream(index: Int, rtspUrl: String, onFrame: @escaping (NSImage) -> Void) {
         stopStream(index: index)
@@ -67,9 +68,11 @@ class PipeStreamManager {
         
         process.standardOutput = pipe
         
+        lock.lock()
         pipes[index] = pipe
         processes[index] = process
         frameCounters[index] = 0
+        lock.unlock()
         
         let outHandle = pipe.fileHandleForReading
         outHandle.readabilityHandler = { [weak self] handle in
@@ -78,10 +81,14 @@ class PipeStreamManager {
             guard !data.isEmpty else { return }
             
             if let image = NSImage(data: data) {
+                let currentCount: Int
+                self.lock.lock()
                 self.frameCounters[index, default: 0] += 1
-                let count = self.frameCounters[index, default: 0]
-                if count % 30 == 0 {
-                    AppLogger.log("📸 [PipeStreamManager \(index)] Frame #\(count) extracted in RAM!")
+                currentCount = self.frameCounters[index, default: 0]
+                self.lock.unlock()
+                
+                if currentCount % 30 == 0 {
+                    AppLogger.log("📸 [PipeStreamManager \(index)] Frame #\(currentCount) extracted in RAM!")
                 }
                 DispatchQueue.main.async {
                     onFrame(image)
@@ -98,19 +105,24 @@ class PipeStreamManager {
     }
     
     func stopStream(index: Int) {
-        if let pipe = pipes[index] {
+        lock.lock()
+        let pipe = pipes.removeValue(forKey: index)
+        let proc = processes.removeValue(forKey: index)
+        frameCounters.removeValue(forKey: index)
+        lock.unlock()
+        
+        if let pipe = pipe {
             pipe.fileHandleForReading.readabilityHandler = nil
-            pipes.removeValue(forKey: index)
         }
-        if let proc = processes[index] {
+        if let proc = proc {
             AppLogger.log("🛑 [PipeStreamManager \(index)] STOPPING Stream PID: \(proc.processIdentifier)")
             proc.terminate()
-            processes.removeValue(forKey: index)
         }
-        frameCounters.removeValue(forKey: index)
     }
     
     func getFrameCount(index: Int) -> Int {
+        lock.lock()
+        defer { lock.unlock() }
         return frameCounters[index, default: 0]
     }
 }

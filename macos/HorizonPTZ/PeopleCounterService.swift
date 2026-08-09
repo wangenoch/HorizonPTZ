@@ -280,10 +280,12 @@ class PeopleCounterService: ObservableObject {
         let poseReq = VNDetectHumanBodyPoseRequest()
         let reqFull = VNDetectHumanRectanglesRequest()
         reqFull.upperBodyOnly = false
+        let reqUpper = VNDetectHumanRectanglesRequest()
+        reqUpper.upperBodyOnly = true
         let reqFace = VNDetectFaceRectanglesRequest()
         
         let h1 = VNImageRequestHandler(cgImage: cgImage, options: [:])
-        try? h1.perform([poseReq, reqFull, reqFace])
+        try? h1.perform([poseReq, reqFull, reqUpper, reqFace])
         
         for obs in (poseReq.results ?? []) {
             if let points = try? obs.recognizedPoints(forGroupKey: .all) {
@@ -297,21 +299,21 @@ class PeopleCounterService: ObservableObject {
                     let minY = ys.min()!
                     let maxY = ys.max()!
                     
-                    let padX: CGFloat = 0.04
-                    let padY: CGFloat = 0.06
+                    let padX: CGFloat = 0.05
+                    let padY: CGFloat = 0.08
                     
                     let b = CGRect(
                         x: max(0, minX - padX),
                         y: max(0, minY - padY),
-                        width: min(0.32, (maxX - minX) + padX * 2),
-                        height: min(0.65, (maxY - minY) + padY * 2)
+                        width: min(0.65, (maxX - minX) + padX * 2), // Zoomed-in speaker up to 0.65 width!
+                        height: min(0.85, (maxY - minY) + padY * 2)
                     )
                     rawBoxes.append(b)
                 }
             }
         }
         
-        for r in (reqFull.results ?? []) {
+        for r in (reqFull.results ?? []) + (reqUpper.results ?? []) {
             if r.confidence >= self.confidenceThreshold {
                 rawBoxes.append(r.boundingBox)
             }
@@ -322,8 +324,8 @@ class PeopleCounterService: ObservableObject {
                 let b = f.boundingBox
                 let headBox = CGRect(x: max(0, b.origin.x - b.width*0.25),
                                      y: max(0, b.origin.y - b.height*0.25),
-                                     width: min(0.18, b.width * 1.5),
-                                     height: min(0.25, b.height * 1.9))
+                                     width: min(0.35, b.width * 1.5),
+                                     height: min(0.45, b.height * 1.9))
                 rawBoxes.append(headBox)
             }
         }
@@ -339,7 +341,6 @@ class PeopleCounterService: ObservableObject {
                 let tileRect = CGRect(x: c * tileW, y: r * tileH, width: tileW, height: tileH)
                 guard let tileCg = cgImage.cropping(to: tileRect) else { continue }
                 
-                // Audience seating area is bottom 3 rows (r <= 2 in Vision y-up space)
                 let isAudienceArea = (r <= 2)
                 let tileThresh: Float = isAudienceArea ? 0.012 : self.confidenceThreshold
                 
@@ -357,7 +358,7 @@ class PeopleCounterService: ObservableObject {
                         let normY = (CGFloat(r * tileH) + (b.origin.y - b.height*0.25) * CGFloat(tileH)) / CGFloat(cgImage.height)
                         let normW = (b.width * 1.5 * CGFloat(tileW)) / CGFloat(cgImage.width)
                         let normH = (b.height * 1.9 * CGFloat(tileH)) / CGFloat(cgImage.height)
-                        rawBoxes.append(CGRect(x: normX, y: normY, width: min(0.15, normW), height: min(0.22, normH)))
+                        rawBoxes.append(CGRect(x: normX, y: normY, width: min(0.35, normW), height: min(0.45, normH)))
                     }
                 }
                 
@@ -368,7 +369,7 @@ class PeopleCounterService: ObservableObject {
                         let normY = (CGFloat(r * tileH) + b.origin.y * CGFloat(tileH)) / CGFloat(cgImage.height)
                         let normW = (b.width * CGFloat(tileW)) / CGFloat(cgImage.width)
                         let normH = (b.height * CGFloat(tileH)) / CGFloat(cgImage.height)
-                        rawBoxes.append(CGRect(x: normX, y: normY, width: min(0.18, normW), height: min(0.28, normH)))
+                        rawBoxes.append(CGRect(x: normX, y: normY, width: min(0.35, normW), height: min(0.45, normH)))
                     }
                 }
             }
@@ -378,24 +379,22 @@ class PeopleCounterService: ObservableObject {
     }
     
     private func mergeAndFilterBoxes(_ inputBoxes: [CGRect]) -> [CGRect] {
-        let minArea = CGFloat(self.minObjectSize) // 0.003
+        let minArea = CGFloat(self.minObjectSize)
         
-        // Rule A: Exclude top ceiling wall area (y + height >= 0.82)
-        // Rule B: Exclude door frame on left wall (x < 0.08 & y > 0.40)
-        // Rule C: Exclude tripod in center space (midX between 0.44..0.54 & midY between 0.20..0.55)
-        // Rule D: Exclude upper-right empty wall Box #5 (x > 0.80 & y > 0.25 & y < 0.80)
+        // Rule A: Filter out ceiling, door frames, tripods, upper-right empty wall
         let validBoxes = inputBoxes.filter { b in
             let area = b.width * b.height
             let aspectRatio = b.width / b.height
             let isDoorFrame = (b.origin.x < 0.08 && b.origin.y > 0.40)
-            let isCeiling = (b.origin.y + b.height >= 0.82)
-            let isTripod = (b.midX > 0.44 && b.midX < 0.54 && b.midY > 0.20 && b.midY < 0.55)
+            let isCeiling = (b.origin.y + b.height >= 0.88)
+            let isTripod = (b.midX > 0.44 && b.midX < 0.54 && b.midY > 0.20 && b.midY < 0.55 && b.width < 0.20)
             let isUpperRightEmptyWall = (b.origin.x > 0.80 && b.origin.y > 0.25)
             
             return area >= minArea && !isCeiling && !isDoorFrame && !isTripod && !isUpperRightEmptyWall && aspectRatio >= 0.15 && aspectRatio <= 2.2
         }
         
-        // Rule E: Speaker Anatomical Column Fusion (Combines speaker's head, chest, mic into 1 single box!)
+        // Rule B: Single Speaker Anatomical Column Fusion (Unconstrained Width up to 0.65 for Zoomed-In View)
+        // Combines Box #3 (face), Box #2 (chest), Box #1 (body) into 1 SINGLE FULL-BODY ENCLOSING BOX!
         var fusedBoxes: [CGRect] = []
         let sortedByArea = validBoxes.sorted { ($0.width * $0.height) > ($1.width * $1.height) }
         
@@ -408,8 +407,9 @@ class PeopleCounterService: ObservableObject {
                 let maxW = max(b.width, existing.width)
                 let maxH = max(b.height, existing.height)
                 
-                let isSamePersonColumn = (centerDx < maxW * 0.35 && centerDy < maxH * 0.80)
-                let isOverlapping = !intersection.isNull && (intersection.width * intersection.height / (b.width * b.height) > 0.30)
+                // Allow fusion if boxes are in the same vertical body column or overlap significantly
+                let isSamePersonColumn = (centerDx < maxW * 0.55 && centerDy < maxH * 0.85)
+                let isOverlapping = !intersection.isNull && (intersection.width * intersection.height / min(b.width * b.height, existing.width * existing.height) > 0.30)
                 
                 if isSamePersonColumn || isOverlapping {
                     absorbedIdx = idx
@@ -424,8 +424,8 @@ class PeopleCounterService: ObservableObject {
                 let newMaxX = max(e.maxX, b.maxX)
                 let newMaxY = max(e.maxY, b.maxY)
                 
-                // Only fuse if resulting box width remains reasonable (<= 0.32)
-                if (newMaxX - newMinX) <= 0.32 {
+                // Fuse up to 0.65 width to handle close-up zoomed-in speaker views!
+                if (newMaxX - newMinX) <= 0.65 {
                     fusedBoxes[idx] = CGRect(x: newMinX, y: newMinY, width: newMaxX - newMinX, height: newMaxY - newMinY)
                 } else {
                     fusedBoxes.append(b)
@@ -435,11 +435,29 @@ class PeopleCounterService: ObservableObject {
             }
         }
         
-        // Rule F: Reject empty wall boxes (width > 0.32)
-        let cleanBoxes = fusedBoxes.filter { b in
-            return b.width <= 0.32 && b.height <= 0.70
+        // Rule C: Non-Maximum Containment Suppression (Deletes sub-boxes inside larger body boxes)
+        var finalKept: [CGRect] = []
+        let sortedFused = fusedBoxes.sorted { ($0.width * $0.height) > ($1.width * $1.height) }
+        
+        for box in sortedFused {
+            var isContained = false
+            for k in finalKept {
+                let intersection = box.intersection(k)
+                if !intersection.isNull {
+                    let interArea = intersection.width * intersection.height
+                    let boxArea = box.width * box.height
+                    // If box is 40%+ contained inside an existing larger box, DELETE IT!
+                    if interArea / boxArea > 0.40 {
+                        isContained = true
+                        break
+                    }
+                }
+            }
+            if !isContained {
+                finalKept.append(box)
+            }
         }
         
-        return cleanBoxes
+        return finalKept
     }
 }

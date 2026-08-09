@@ -297,14 +297,14 @@ class PeopleCounterService: ObservableObject {
                     let minY = ys.min()!
                     let maxY = ys.max()!
                     
-                    let padX: CGFloat = 0.05
-                    let padY: CGFloat = 0.08
+                    let padX: CGFloat = 0.04
+                    let padY: CGFloat = 0.06
                     
                     let b = CGRect(
                         x: max(0, minX - padX),
                         y: max(0, minY - padY),
-                        width: min(0.35, (maxX - minX) + padX * 2), // Cap width at 0.35 to prevent giant wall boxes!
-                        height: min(0.65, (maxY - minY) + padY * 2)
+                        width: min(0.25, (maxX - minX) + padX * 2), // Individual person max width 0.25!
+                        height: min(0.45, (maxY - minY) + padY * 2)
                     )
                     rawBoxes.append(b)
                 }
@@ -312,7 +312,7 @@ class PeopleCounterService: ObservableObject {
         }
         
         for r in (reqFull.results ?? []) {
-            if r.confidence >= self.confidenceThreshold && r.boundingBox.width <= 0.35 {
+            if r.confidence >= self.confidenceThreshold && r.boundingBox.width <= 0.25 {
                 rawBoxes.append(r.boundingBox)
             }
         }
@@ -322,7 +322,7 @@ class PeopleCounterService: ObservableObject {
                 let b = f.boundingBox
                 let headBox = CGRect(x: max(0, b.origin.x - b.width*0.25),
                                      y: max(0, b.origin.y - b.height*0.25),
-                                     width: min(0.20, b.width * 1.5),
+                                     width: min(0.18, b.width * 1.5),
                                      height: min(0.25, b.height * 1.9))
                 rawBoxes.append(headBox)
             }
@@ -355,7 +355,7 @@ class PeopleCounterService: ObservableObject {
                         let normY = (CGFloat(r * tileH) + (b.origin.y - b.height*0.25) * CGFloat(tileH)) / CGFloat(cgImage.height)
                         let normW = (b.width * 1.5 * CGFloat(tileW)) / CGFloat(cgImage.width)
                         let normH = (b.height * 1.9 * CGFloat(tileH)) / CGFloat(cgImage.height)
-                        rawBoxes.append(CGRect(x: normX, y: normY, width: normW, height: normH))
+                        rawBoxes.append(CGRect(x: normX, y: normY, width: min(0.18, normW), height: min(0.25, normH)))
                     }
                 }
             }
@@ -369,18 +369,20 @@ class PeopleCounterService: ObservableObject {
         
         // Rule A: Exclude top ceiling wall area (y + height >= 0.82)
         // Rule B: Exclude door frame on left wall (x < 0.08 & y > 0.40)
-        // Rule C: Exclude giant wall boxes (width > 0.35)
+        // Rule C: Exclude tripod in center space (midX between 0.44..0.54 & midY between 0.20..0.55)
+        // Rule D: Exclude giant cluster boxes (width > 0.25 or height > 0.50)
         let validBoxes = inputBoxes.filter { b in
             let area = b.width * b.height
             let aspectRatio = b.width / b.height
             let isDoorFrame = (b.origin.x < 0.08 && b.origin.y > 0.40)
             let isCeiling = (b.origin.y + b.height >= 0.82)
-            let isTooWide = (b.width > 0.35)
+            let isTripod = (b.midX > 0.44 && b.midX < 0.54 && b.midY > 0.20 && b.midY < 0.55)
+            let isGiantBox = (b.width > 0.25 || b.height > 0.50)
             
-            return area >= minArea && !isCeiling && !isDoorFrame && !isTooWide && aspectRatio >= 0.15 && aspectRatio <= 2.2
+            return area >= minArea && !isCeiling && !isDoorFrame && !isTripod && !isGiantBox && aspectRatio >= 0.15 && aspectRatio <= 2.2
         }
         
-        // Rule D: NMS IoU Filtering
+        // Rule E: Pure Individual NMS (IoU 0.35 threshold) - ZERO merging of neighboring people into giant cluster boxes!
         var finalKept: [CGRect] = []
         let sorted = validBoxes.sorted { ($0.width * $0.height) > ($1.width * $1.height) }
         
@@ -391,7 +393,7 @@ class PeopleCounterService: ObservableObject {
                 if !intersection.isNull {
                     let interArea = intersection.width * intersection.height
                     let boxArea = box.width * box.height
-                    if interArea / boxArea > 0.40 {
+                    if interArea / boxArea > 0.35 {
                         isOverlap = true
                         break
                     }

@@ -24,7 +24,7 @@ class PersonTracker {
     private var trackedPeople: [InternalTrackedPerson] = []
     private var featureGallery: [Int: VNFeaturePrintObservation] = [:]
     private var nextId = 1
-    private let maxDisappeared = 25 // Holds detections across temporary head movements to keep count steady!
+    private let maxDisappeared = 30 // Holds detections across temporary movements to keep count rock-steady!
     private let minConfirmedFrames = 2 // Anti-flicker: Must persist 2 frames to eliminate noise
     
     func update(with newBoxes: [CGRect], cgImage: CGImage, distThreshold: CGFloat, alpha: CGFloat, isReIdEnabled: Bool, reIdSimilarity: Float) -> [(id: Int, box: CGRect)] {
@@ -49,7 +49,7 @@ class PersonTracker {
                 let intersection = person.box.intersection(newBox)
                 let iou = intersection.isNull ? 0 : (intersection.width * intersection.height) / (person.box.width * person.box.height)
                 
-                if dist < distThreshold || iou > 0.20 {
+                if dist < distThreshold || iou > 0.15 {
                     matches.append((tIdx, nIdx, dist))
                 }
             }
@@ -277,7 +277,7 @@ class PeopleCounterService: ObservableObject {
     private func runMultiScaleInference(cgImage: CGImage) -> [CGRect] {
         var rawBoxes: [CGRect] = []
         
-        // Pass 1: Global Full Body, Upper Body, Face Request
+        // Pass 1: Global Full Body & Upper Body Pass
         let reqFull = VNDetectHumanRectanglesRequest()
         reqFull.upperBodyOnly = false
         let reqUpper = VNDetectHumanRectanglesRequest()
@@ -304,9 +304,9 @@ class PeopleCounterService: ObservableObject {
             }
         }
         
-        // Pass 2: 4x3 Multi-scale Grid Tiling (Extremely Sensitive for Dense Audience Seating)
+        // Pass 2: 4x4 Multi-scale Grid Tiling (Extremely Sensitive for Dense Audience Seating)
         let cols = 4
-        let rows = 3
+        let rows = 4
         let tileW = cgImage.width / cols
         let tileH = cgImage.height / rows
         
@@ -315,8 +315,8 @@ class PeopleCounterService: ObservableObject {
                 let tileRect = CGRect(x: c * tileW, y: r * tileH, width: tileW, height: tileH)
                 guard let tileCg = cgImage.cropping(to: tileRect) else { continue }
                 
-                // Audience seating area is bottom 2 rows (r <= 1) in Vision y-up space
-                let isAudienceArea = (r <= 1)
+                // Audience seating area is bottom 3 rows (r <= 2) in Vision y-up space
+                let isAudienceArea = (r <= 2)
                 let tileThresh: Float = isAudienceArea ? 0.012 : self.confidenceThreshold
                 
                 let tFull = VNDetectHumanRectanglesRequest()
@@ -328,18 +328,7 @@ class PeopleCounterService: ObservableObject {
                 let th = VNImageRequestHandler(cgImage: tileCg, options: [:])
                 try? th.perform([tFull, tUpper, tFace])
                 
-                for res in (tFull.results ?? []) {
-                    if res.confidence >= tileThresh {
-                        let b = res.boundingBox
-                        let normX = (CGFloat(c * tileW) + b.origin.x * CGFloat(tileW)) / CGFloat(cgImage.width)
-                        let normY = (CGFloat(r * tileH) + b.origin.y * CGFloat(tileH)) / CGFloat(cgImage.height)
-                        let normW = (b.width * CGFloat(tileW)) / CGFloat(cgImage.width)
-                        let normH = (b.height * CGFloat(tileH)) / CGFloat(cgImage.height)
-                        rawBoxes.append(CGRect(x: normX, y: normY, width: normW, height: normH))
-                    }
-                }
-                
-                for res in (tUpper.results ?? []) {
+                for res in (tFull.results ?? []) + (tUpper.results ?? []) {
                     if res.confidence >= tileThresh {
                         let b = res.boundingBox
                         let normX = (CGFloat(c * tileW) + b.origin.x * CGFloat(tileW)) / CGFloat(cgImage.width)
@@ -370,32 +359,43 @@ class PeopleCounterService: ObservableObject {
         let minArea = CGFloat(self.minObjectSize) // 0.002
         
         // Rule A: Exclude top ceiling wall area (y + height >= 0.82 in Vision y-up space)
+        // Also filter out extreme pole aspect ratios (thin camera/mic poles where width/height < 0.12 or width/height > 2.2)
         let validBoxes = inputBoxes.filter { b in
             let area = b.width * b.height
-            return area >= minArea && b.origin.y + b.height < 0.82
+            let aspectRatio = b.width / b.height
+            return area >= minArea && b.origin.y + b.height < 0.82 && aspectRatio >= 0.15 && aspectRatio <= 2.0
         }
         
-        // Rule B: Dominant Vertical Human Column Fusion
-        // Merges upper body (shirt) and lower body (pants) of the SAME standing person into ONE SINGLE FULL BODY BOX!
+        // Rule B: Aggressive Body & Microphone Enclosing Box Fusion
+        // If Box B (mic, chest, belt) is inside or overlaps with Box A (body), ABSORB EVERYTHING INTO ONE SINGLE SPEAKER BOX!
         var mergedBoxes: [CGRect] = []
         let sortedByArea = validBoxes.sorted { ($0.width * $0.height) > ($1.width * $1.height) }
         
         for b in sortedByArea {
-            var mergedIdx: Int? = nil
+            var absorbedIdx: Int? = nil
             for (idx, existing) in mergedBoxes.enumerated() {
+                let intersection = b.intersection(existing)
                 let centerDx = abs(b.midX - existing.midX)
+                let centerDy = abs(b.midY - existing.midY)
                 let maxW = max(b.width, existing.width)
-                let verticalDist = abs(b.midY - existing.midY)
                 let maxH = max(b.height, existing.height)
                 
-                // If they belong to the same vertical human column (same person's upper/lower body)
-                if centerDx < maxW * 0.45 && verticalDist < maxH * 0.85 {
-                    mergedIdx = idx
+                // Center inside check (mic, chest, belt inside body)
+                let isCenterInside = existing.contains(CGPoint(x: b.midX, y: b.midY)) || b.contains(CGPoint(x: existing.midX, y: existing.midY))
+                
+                // Same vertical human column check (centerDx < 50% maxW & centerDy < 85% maxH)
+                let isSameColumn = (centerDx < maxW * 0.50 && centerDy < maxH * 0.85)
+                
+                // IoU overlap check (> 30%)
+                let isOverlapping = !intersection.isNull && (intersection.width * intersection.height / (b.width * b.height) > 0.30)
+                
+                if isCenterInside || isSameColumn || isOverlapping {
+                    absorbedIdx = idx
                     break
                 }
             }
             
-            if let idx = mergedIdx {
+            if let idx = absorbedIdx {
                 let e = mergedBoxes[idx]
                 let newMinX = min(e.minX, b.minX)
                 let newMinY = min(e.minY, b.minY)

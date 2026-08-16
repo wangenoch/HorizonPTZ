@@ -9,6 +9,10 @@ final class CoreMLYoloDetector {
     
     private init() {
         let candidatePaths = [
+            Bundle.main.url(forResource: "yolov8n_head", withExtension: "mlmodelc"),
+            URL(fileURLWithPath: "/tmp/yolov8n_head.mlmodelc"),
+            URL(fileURLWithPath: "/Users/enoch/AndroidStudioProjects/HorizonPTZ/macos/HorizonPTZ/yolov8n_head.mlmodelc"),
+            URL(fileURLWithPath: "/Users/enoch/Desktop/HorizonPTZ.app/Contents/Resources/yolov8n_head.mlmodelc"),
             Bundle.main.url(forResource: "yolov8n", withExtension: "mlmodelc"),
             URL(fileURLWithPath: "/tmp/yolov8n.mlmodelc"),
             URL(fileURLWithPath: "/Users/enoch/AndroidStudioProjects/HorizonPTZ/macos/HorizonPTZ/yolov8n.mlmodelc"),
@@ -20,7 +24,7 @@ final class CoreMLYoloDetector {
                 if let mlModel = try? MLModel(contentsOf: url),
                    let vModel = try? VNCoreMLModel(for: mlModel) {
                     self.visionModel = vModel
-                    print("🚀 [CoreMLYoloDetector] CoreML YOLO model loaded from: \(url.path)")
+                    print("🚀 [CoreMLYoloDetector] CoreML YOLO model loaded successfully from: \(url.path)")
                     break
                 }
             }
@@ -40,7 +44,7 @@ final class CoreMLYoloDetector {
                     resultBoxes.append(contentsOf: boxes)
                 } else if let recognizedObs = obs as? VNRecognizedObjectObservation {
                     for label in recognizedObs.labels {
-                        if (label.identifier == "person" || label.identifier == "0") && recognizedObs.confidence > 0.25 {
+                        if (label.identifier == "person" || label.identifier == "head" || label.identifier == "0") && recognizedObs.confidence > 0.20 {
                             resultBoxes.append(recognizedObs.boundingBox)
                         }
                     }
@@ -60,13 +64,27 @@ final class CoreMLYoloDetector {
         let strides = multiArray.strides.map { $0.intValue }
         let ptr = multiArray.dataPointer.bindMemory(to: Float.self, capacity: multiArray.count)
         
-        let numAnchors = 8400
-        let strideChannel = strides.count > 1 ? strides[1] : 8400
+        let shape = multiArray.shape.map { $0.intValue }
+        let numChannels = shape.count > 1 ? shape[1] : 84
+        let numAnchors = shape.count > 2 ? shape[2] : 8400
+        
+        let strideChannel = strides.count > 1 ? strides[1] : numAnchors
         let strideAnchor = strides.count > 2 ? strides[2] : 1
         
         for i in 0..<numAnchors {
-            let personScore = ptr[4 * strideChannel + i * strideAnchor]
-            if personScore > 0.25 {
+            var maxScore: Float = 0.0
+            if numChannels > 4 {
+                for c in 4..<numChannels {
+                    let s = ptr[c * strideChannel + i * strideAnchor]
+                    if s > maxScore {
+                        maxScore = s
+                    }
+                }
+            } else {
+                maxScore = ptr[4 * strideChannel + i * strideAnchor]
+            }
+            
+            if maxScore > 0.18 {
                 let cx = ptr[0 * strideChannel + i * strideAnchor] / 640.0
                 let cy = ptr[1 * strideChannel + i * strideAnchor] / 640.0
                 let w  = ptr[2 * strideChannel + i * strideAnchor] / 640.0
@@ -74,6 +92,7 @@ final class CoreMLYoloDetector {
                 
                 let normX = CGFloat(max(0, cx - w / 2.0))
                 let normY = CGFloat(max(0, (1.0 - cy) - h / 2.0))
+                
                 let normW = CGFloat(min(0.24, w))
                 let normH = CGFloat(min(0.38, h))
                 

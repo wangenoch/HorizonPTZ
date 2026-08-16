@@ -667,44 +667,59 @@ struct SettingsView: View {
         .padding(16)
     }
     
+    @ObservedObject private var ytService = YouTubeLiveService.shared
+
     private func youtubeTab() -> some View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 12) {
-                Text("YouTube Live 頻道與直播金鑰")
+                Text("Google Cloud Console OAuth 2.0 API 認證設定")
                     .font(.system(size: 12, weight: .bold))
                     .foregroundColor(.secondary)
                 
                 VStack(spacing: 10) {
                     HStack {
-                        Text("YouTube 頻道 ID:")
+                        Text("Google Client ID:")
                             .font(.system(size: 12))
-                            .frame(width: 120, alignment: .trailing)
-                        TextField("Channel ID (例如：UCxxxxxx)", text: $youtubeChannelId)
+                            .frame(width: 140, alignment: .trailing)
+                        TextField("例如：xxxx.apps.googleusercontent.com", text: $ytService.clientID)
                             .textFieldStyle(.roundedBorder)
                     }
                     
                     HStack {
-                        Text("直播串流金鑰:")
+                        Text("Google Client Secret:")
                             .font(.system(size: 12))
-                            .frame(width: 120, alignment: .trailing)
-                        
-                        TextField("Stream Key", text: $youtubeStreamKey)
+                            .frame(width: 140, alignment: .trailing)
+                        SecureField("GOCSPX-xxxxxx", text: $ytService.clientSecret)
                             .textFieldStyle(.roundedBorder)
-                        
-                        Button(action: {
-                            let pasteboard = NSPasteboard.general
-                            pasteboard.declareTypes([.string], owner: nil)
-                            pasteboard.setString(youtubeStreamKey, forType: .string)
-                        }) {
-                            Label("複製金鑰", systemImage: "doc.on.doc")
-                        }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
-                        .help("複製金鑰到剪貼簿")
                     }
                 }
                 
-                Text("💡 提示：設定頻道 ID 後，主視窗下方瀏覽器載入 YouTube Studio 時會自動開啟專屬直播主控台。")
+                HStack(spacing: 12) {
+                    Button("儲存 OAuth 憑證") {
+                        ytService.saveClientCredentials(id: ytService.clientID, secret: ytService.clientSecret)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.small)
+                    
+                    if ytService.isLoggedIn {
+                        HStack(spacing: 6) {
+                            Image(systemName: "checkmark.circle.fill")
+                                .foregroundColor(.green)
+                            Text("已成功連線頻道：\(ytService.channelTitle)")
+                                .font(.system(size: 11, weight: .bold))
+                        }
+                    } else {
+                        Button("🔑 觸發 Google OAuth 2.0 登入") {
+                            ytService.saveClientCredentials(id: ytService.clientID, secret: ytService.clientSecret)
+                            ytService.startOAuthLogin { _, _ in }
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
+                }
+                .padding(.top, 4)
+                
+                Text("💡 提示：輸入 Google Cloud Console 產生的 Client ID 與 Secret 後點擊儲存，更新 App 時憑證將自動保留於 macOS Keychain (系統金鑰圈)，完全不需要重新登入！")
                     .font(.system(size: 11))
                     .foregroundColor(.secondary)
                     .padding(.top, 4)

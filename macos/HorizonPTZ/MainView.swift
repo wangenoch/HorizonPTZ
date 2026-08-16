@@ -120,10 +120,9 @@ struct MainView: View {
                 .padding(12)
                 .frame(minHeight: 280, idealHeight: 360, maxHeight: 520)
                 
-                // Bottom Web Browser
-                WebBrowserComponent(initialUrl: youtubeUrl)
-                    .id(youtubeUrl)
-                    .frame(minHeight: 200, maxHeight: .infinity)
+                // Native YouTube Studio Dashboard Component
+                YouTubeStudioDashboardView()
+                    .frame(minHeight: 220, maxHeight: .infinity)
             }
         }
         .onAppear {

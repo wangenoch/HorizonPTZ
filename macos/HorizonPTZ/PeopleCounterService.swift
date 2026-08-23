@@ -84,20 +84,20 @@ final class CoreMLYoloDetector {
                 maxScore = ptr[4 * strideChannel + i * strideAnchor]
             }
             
-            // Sensitive score threshold (0.04) for distant audience heads
-            if maxScore > 0.04 {
+            // Sensitive score threshold (0.03) for distant audience heads
+            if maxScore > 0.03 {
                 let cx = ptr[0 * strideChannel + i * strideAnchor] / 640.0
                 let cy = ptr[1 * strideChannel + i * strideAnchor] / 640.0
                 let w  = ptr[2 * strideChannel + i * strideAnchor] / 640.0
                 let h  = ptr[3 * strideChannel + i * strideAnchor] / 640.0
                 
-                let normW = CGFloat(min(0.14, w))
-                let normH = CGFloat(min(0.20, h))
+                let normW = CGFloat(w)
+                let normH = CGFloat(h)
                 
                 let normX = max(CGFloat(0), CGFloat(cx) - normW / 2.0)
                 let normY = max(CGFloat(0), CGFloat(1.0 - cy) - normH / 2.0)
                 
-                if w <= 0.22 && h <= 0.32 {
+                if normW <= 0.16 && normH <= 0.24 && (normW * normH) >= 0.0006 {
                     rawBoxes.append(CGRect(x: normX, y: normY, width: normW, height: normH))
                 }
             }
@@ -329,8 +329,8 @@ class PeopleCounterService: ObservableObject {
         
         var finalBoxes: [CGRect] = []
         let sorted = allCandidates.filter { b in
-            // Strict head/person caps: width <= 0.15, height <= 0.22
-            return b.width <= 0.15 && b.height <= 0.22 && (b.width * b.height) >= 0.0010
+            // Strict head/person caps: width <= 0.12, height <= 0.15 (Head only)
+            return b.width <= 0.12 && b.height <= 0.15 && (b.width * b.height) >= 0.0006
         }.sorted { ($0.width * $0.height) < ($1.width * $1.height) }
         
         for b in sorted {
@@ -341,7 +341,7 @@ class PeopleCounterService: ObservableObject {
                     let interArea = inter.width * inter.height
                     let unionArea = (b.width * b.height) + (k.width * k.height) - interArea
                     let iou = interArea / unionArea
-                    if iou > 0.35 {
+                    if iou > 0.30 {
                         keep = false
                         break
                     }
@@ -357,13 +357,12 @@ class PeopleCounterService: ObservableObject {
     private func runPrecisionDetection(cgImage: CGImage, cameraIndex: Int = 1) -> [CGRect] {
         var rawBoxes: [CGRect] = []
         
-        // 1. Pass 1: Human Body Pose Keypoint Request (For Presenter & Standing Bodies)
         let poseReq = VNDetectHumanBodyPoseRequest()
         let reqFace = VNDetectFaceRectanglesRequest()
         let h1 = VNImageRequestHandler(cgImage: cgImage, options: [:])
         try? h1.perform([poseReq, reqFace])
         
-        // A. Human Pose Keypoints: Require shoulder/neck/head keypoints to prevent guitar false positives
+        // 1. Pass 1: Human Body Pose Head/Neck Keypoints
         for obs in (poseReq.results ?? []) {
             if let points = try? obs.recognizedPoints(forGroupKey: .all) {
                 let validPoints = points.values.filter { $0.confidence > 0.20 }
@@ -376,32 +375,32 @@ class PeopleCounterService: ObservableObject {
                     let maxY = ys.max()!
                     
                     let padX: CGFloat = 0.02
-                    let padY: CGFloat = 0.03
+                    let padY: CGFloat = 0.02
                     
                     let b = CGRect(
                         x: max(0, minX - padX),
                         y: max(0, minY - padY),
-                        width: min(0.15, (maxX - minX) + padX * 2),
-                        height: min(0.22, (maxY - minY) + padY * 2)
+                        width: min(0.12, (maxX - minX) + padX * 2),
+                        height: min(0.15, (maxY - minY) + padY * 2)
                     )
                     rawBoxes.append(b)
                 }
             }
         }
         
-        // B. Face Detections (True Faces)
+        // 2. Pass 2: Face Detections (True Faces)
         for f in (reqFace.results ?? []) {
-            if f.confidence >= 0.10 {
+            if f.confidence >= 0.05 {
                 let b = f.boundingBox
-                let head = CGRect(x: max(0, b.origin.x - b.width*0.15),
-                                  y: max(0, b.origin.y - b.height*0.15),
-                                  width: min(0.14, b.width * 1.3),
-                                  height: min(0.18, b.height * 1.5))
+                let head = CGRect(x: max(0, b.origin.x - b.width*0.10),
+                                  y: max(0, b.origin.y - b.height*0.10),
+                                  width: min(0.12, b.width * 1.2),
+                                  height: min(0.15, b.height * 1.3))
                 rawBoxes.append(head)
             }
         }
         
-        // 2. Pass 2: 8x8 Seated Audience Micro Grid (For CAM 01 Seated Audience)
+        // 3. Pass 3: 8x8 Seated Audience Micro Grid (Face detection only, no generic upper body)
         if cameraIndex == 1 {
             let cols = 8
             let rows = 8
@@ -416,58 +415,38 @@ class PeopleCounterService: ObservableObject {
                     guard let tileCg = cgImage.cropping(to: tileRect) else { continue }
                     
                     let tFace = VNDetectFaceRectanglesRequest()
-                    let tHuman = VNDetectHumanRectanglesRequest()
-                    tHuman.upperBodyOnly = true
-                    
                     let th = VNImageRequestHandler(cgImage: tileCg, options: [:])
-                    try? th.perform([tFace, tHuman])
+                    try? th.perform([tFace])
                     
                     for f in (tFace.results ?? []) {
-                        if f.confidence >= 0.05 {
+                        if f.confidence >= 0.03 {
                             let b = f.boundingBox
                             let normX = (CGFloat(c) * tileW + (b.origin.x - b.width * 0.10) * tileW) / fullW
                             let normY = 1.0 - ((CGFloat(r + 1) * tileH) - (b.origin.y - b.height * 0.10) * tileH) / fullH
                             let normW = (b.width * 1.2 * tileW) / fullW
-                            let normH = (b.height * 1.4 * tileH) / fullH
+                            let normH = (b.height * 1.3 * tileH) / fullH
                             
-                            rawBoxes.append(CGRect(x: max(0, normX), y: max(0, normY), width: min(0.13, normW), height: min(0.18, normH)))
-                        }
-                    }
-                    
-                    for h in (tHuman.results ?? []) {
-                        if h.confidence >= 0.08 {
-                            let b = h.boundingBox
-                            let normX = (CGFloat(c) * tileW + b.origin.x * tileW) / fullW
-                            let normY = 1.0 - ((CGFloat(r + 1) * tileH) - b.origin.y * tileH) / fullH
-                            let normW = (b.width * tileW) / fullW
-                            let normH = (b.height * tileH) / fullH
-                            
-                            // Exclude empty chair areas on left aisle
-                            if normX > 0.15 || normY > 0.45 {
-                                rawBoxes.append(CGRect(x: max(0, normX), y: max(0, normY), width: min(0.14, normW), height: min(0.18, normH)))
-                            }
+                            rawBoxes.append(CGRect(x: max(0, normX), y: max(0, normY), width: min(0.12, normW), height: min(0.15, normH)))
                         }
                     }
                 }
             }
         }
         
-        // 3. Filter out invalid background noise (Empty chairs, Doors, Ceiling, Keyboard)
+        // 4. Filter out invalid background noise (Doors, Ceiling, Wall Light Beam)
         let validBoxes = rawBoxes.filter { b in
             let area = b.width * b.height
-            let isDoorFrame = (b.origin.x < 0.05 && b.origin.y > 0.40) || (b.origin.x > 0.92)
-            let isCeiling = (b.origin.y + b.height >= 0.90)
-            let isKeyboardStand = (b.midX > 0.08 && b.midX < 0.32 && b.midY > 0.55 && b.midY < 0.85 && b.width > 0.16)
-            let isMiddleEquipment = (b.midX > 0.25 && b.midX < 0.48 && b.midY > 0.55 && b.midY < 0.85 && b.width < 0.22)
+            let isDoorFrame = (b.origin.x < 0.03 && b.origin.y > 0.50) || (b.origin.x > 0.94)
+            let isCeiling = (b.origin.y + b.height >= 0.92)
             
-            // Empty chair zone on lower-left aisle without head
-            let isEmptyChairZone = (b.midX < 0.20 && b.midY < 0.35)
-            let isGiantCluster = (b.width > 0.15 || b.height > 0.20)
+            // Exclude static wall light / projector beam zone (midX: 0.38..0.55, midY: 0.40..0.75 without human features)
+            let isWallLightBeam = (b.midX > 0.38 && b.midX < 0.55 && b.midY > 0.45 && b.midY < 0.75 && b.width > 0.15)
+            let isGiantCluster = (b.width > 0.14 || b.height > 0.18)
             
-            return area >= 0.0010 && !isCeiling && !isDoorFrame && !isKeyboardStand && !isMiddleEquipment && !isEmptyChairZone && !isGiantCluster
+            return area >= 0.0005 && !isCeiling && !isDoorFrame && !isWallLightBeam && !isGiantCluster
         }
         
-        // 4. Non-Maximum Suppression (NMS)
+        // 5. Standard IoU Non-Maximum Suppression (NMS - No vertical column over-merging)
         var keptBoxes: [CGRect] = []
         let candidates = validBoxes.sorted { ($0.width * $0.height) < ($1.width * $1.height) }
         
@@ -479,7 +458,7 @@ class PeopleCounterService: ObservableObject {
                     let interArea = intersection.width * intersection.height
                     let unionArea = (b.width * b.height) + (existing.width * existing.height) - interArea
                     let iou = interArea / unionArea
-                    if iou > 0.35 {
+                    if iou > 0.30 {
                         shouldKeep = false
                         break
                     }

@@ -84,8 +84,8 @@ final class CoreMLYoloDetector {
                 maxScore = ptr[4 * strideChannel + i * strideAnchor]
             }
             
-            // Sensitive score threshold (0.03) for distant audience heads
-            if maxScore > 0.03 {
+            // Standard confidence threshold (0.25) for clean YOLO head predictions
+            if maxScore >= 0.25 {
                 let cx = ptr[0 * strideChannel + i * strideAnchor] / 640.0
                 let cy = ptr[1 * strideChannel + i * strideAnchor] / 640.0
                 let w  = ptr[2 * strideChannel + i * strideAnchor] / 640.0
@@ -97,7 +97,7 @@ final class CoreMLYoloDetector {
                 let normX = max(CGFloat(0), CGFloat(cx) - normW / 2.0)
                 let normY = max(CGFloat(0), CGFloat(1.0 - cy) - normH / 2.0)
                 
-                if normW <= 0.16 && normH <= 0.24 && (normW * normH) >= 0.0006 {
+                if normW <= 0.14 && normH <= 0.18 && (normW * normH) >= 0.0006 {
                     rawBoxes.append(CGRect(x: normX, y: normY, width: normW, height: normH))
                 }
             }
@@ -324,13 +324,11 @@ class PeopleCounterService: ObservableObject {
     
     private func runCoreMLYoloInference(cgImage: CGImage) -> [CGRect] {
         let yoloBoxes = CoreMLYoloDetector.shared.detect(cgImage: cgImage)
-        let precisionBoxes = runPrecisionDetection(cgImage: cgImage)
-        let allCandidates = yoloBoxes + precisionBoxes
         
         var finalBoxes: [CGRect] = []
-        let sorted = allCandidates.filter { b in
-            // Strict head/person caps: width <= 0.12, height <= 0.15 (Head only)
-            return b.width <= 0.12 && b.height <= 0.15 && (b.width * b.height) >= 0.0006
+        let sorted = yoloBoxes.filter { b in
+            // Strict head caps: width <= 0.14, height <= 0.18 (Head only)
+            return b.width <= 0.14 && b.height <= 0.18 && (b.width * b.height) >= 0.0006
         }.sorted { ($0.width * $0.height) < ($1.width * $1.height) }
         
         for b in sorted {

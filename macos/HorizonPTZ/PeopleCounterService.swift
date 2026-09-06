@@ -87,20 +87,24 @@ final class CoreMLYoloDetector {
                 globalMaxScore = maxScore
             }
             
-            // Clean threshold (minConfidence) to eliminate microphones, instruments and desk objects
-            if maxScore >= minConfidence {
-                let cx = ptr[0 * strideChannel + i * strideAnchor] / 640.0
-                let cy = ptr[1 * strideChannel + i * strideAnchor] / 640.0
-                let w  = ptr[2 * strideChannel + i * strideAnchor] / 640.0
-                let h  = ptr[3 * strideChannel + i * strideAnchor] / 640.0
-                
-                let normW = CGFloat(w)
-                let normH = CGFloat(h)
-                
-                let normX = max(CGFloat(0), CGFloat(cx) - normW / 2.0)
-                let normY = max(CGFloat(0), CGFloat(1.0 - cy) - normH / 2.0)
-                
-                // Allow distant heads (min 0.0004 area) and close-up heads (up to 0.35 width, 0.40 height)
+            let cx = ptr[0 * strideChannel + i * strideAnchor] / 640.0
+            let cy = ptr[1 * strideChannel + i * strideAnchor] / 640.0
+            let w  = ptr[2 * strideChannel + i * strideAnchor] / 640.0
+            let h  = ptr[3 * strideChannel + i * strideAnchor] / 640.0
+            
+            let normW = CGFloat(w)
+            let normH = CGFloat(h)
+            
+            let normX = max(CGFloat(0), CGFloat(cx) - normW / 2.0)
+            let normY = max(CGFloat(0), CGFloat(1.0 - cy) - normH / 2.0)
+            
+            // Adaptive noise suppression:
+            // Tiny objects (width < 0.055 and area < 0.005) like microphones/stands require 0.35 confidence!
+            // Real human heads (area >= 0.005) use minConfidence (0.20) for full recall!
+            let isTinyNoise = (normW < 0.055 && (normW * normH) < 0.005)
+            let requiredConf = isTinyNoise ? 0.35 : minConfidence
+            
+            if maxScore >= requiredConf {
                 let aspect = normW / normH
                 if normW <= 0.35 && normH <= 0.40 && (normW * normH) >= 0.0004 && aspect >= 0.35 && aspect <= 1.60 {
                     rawBoxes.append((box: CGRect(x: normX, y: normY, width: normW, height: normH), score: maxScore))
@@ -262,7 +266,7 @@ class PeopleCounterService: ObservableObject {
     static let shared = PeopleCounterService()
     
     @Published var currentEngineMode: AiEngineMode = .coreMLYolo
-    @Published var confidenceThreshold: Float = 0.25
+    @Published var confidenceThreshold: Float = 0.20
     @Published var minObjectSize: Float = 0.001
     @Published var samplingFps: Int = 10
     @Published var trackingAlpha: Float = 0.85

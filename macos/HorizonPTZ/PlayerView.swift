@@ -37,6 +37,7 @@ class PipeStreamManager {
     private var processes: [Int: Process] = [:]
     private var pipes: [Int: Pipe] = [:]
     private var frameCounters: [Int: Int] = [:]
+    private var buffers: [Int: Data] = [:]
     private let lock = NSLock()
     
     func startStream(index: Int, rtspUrl: String, onFrame: @escaping (NSImage) -> Void) {
@@ -72,26 +73,56 @@ class PipeStreamManager {
         pipes[index] = pipe
         processes[index] = process
         frameCounters[index] = 0
+        buffers[index] = Data()
         lock.unlock()
         
         let outHandle = pipe.fileHandleForReading
         outHandle.readabilityHandler = { [weak self] handle in
             guard let self = self else { return }
-            let data = handle.availableData
-            guard !data.isEmpty else { return }
+            let chunk = handle.availableData
+            guard !chunk.isEmpty else { return }
             
-            if let image = NSImage(data: data) {
-                let currentCount: Int
-                self.lock.lock()
-                self.frameCounters[index, default: 0] += 1
-                currentCount = self.frameCounters[index, default: 0]
-                self.lock.unlock()
-                
-                if currentCount % 30 == 0 {
-                    AppLogger.log("📸 [PipeStreamManager \(index)] Frame #\(currentCount) extracted in RAM!")
+            var framesToProcess: [NSImage] = []
+            
+            self.lock.lock()
+            self.buffers[index, default: Data()].append(chunk)
+            var buffer = self.buffers[index]!
+            
+            let soi = Data([0xFF, 0xD8])
+            let eoi = Data([0xFF, 0xD9])
+            
+            while let soiRange = buffer.range(of: soi) {
+                if soiRange.lowerBound > 0 {
+                    buffer.removeSubrange(0..<soiRange.lowerBound)
                 }
+                
+                guard let eoiRange = buffer.range(of: eoi) else {
+                    break
+                }
+                
+                let frameEnd = eoiRange.upperBound
+                let jpegData = buffer.subdata(in: 0..<frameEnd)
+                buffer.removeSubrange(0..<frameEnd)
+                
+                if let image = NSImage(data: jpegData) {
+                    self.frameCounters[index, default: 0] += 1
+                    let count = self.frameCounters[index, default: 0]
+                    if count % 30 == 0 {
+                        AppLogger.log("📸 [PipeStreamManager \(index)] Frame #\(count) extracted in RAM!")
+                    }
+                    framesToProcess.append(image)
+                }
+            }
+            
+            if buffer.count > 500_000 {
+                buffer.removeAll()
+            }
+            self.buffers[index] = buffer
+            self.lock.unlock()
+            
+            if let latestImage = framesToProcess.last {
                 DispatchQueue.main.async {
-                    onFrame(image)
+                    onFrame(latestImage)
                 }
             }
         }
@@ -109,6 +140,7 @@ class PipeStreamManager {
         let pipe = pipes.removeValue(forKey: index)
         let proc = processes.removeValue(forKey: index)
         frameCounters.removeValue(forKey: index)
+        buffers.removeValue(forKey: index)
         lock.unlock()
         
         if let pipe = pipe {

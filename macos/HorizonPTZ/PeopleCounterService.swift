@@ -383,30 +383,6 @@ class PeopleCounterService: ObservableObject {
         }
         return finalBoxes
     }
-        
-        // 2. Standard NMS
-        var finalBoxes: [CGRect] = []
-        let sorted = candidates.sorted { ($0.width * $0.height) < ($1.width * $1.height) }
-        for b in sorted {
-            var keep = true
-            for k in finalBoxes {
-                let inter = b.intersection(k)
-                if !inter.isNull {
-                    let interArea = inter.width * inter.height
-                    let unionArea = (b.width * b.height) + (k.width * k.height) - interArea
-                    let iou = interArea / unionArea
-                    if iou > 0.30 {
-                        keep = false
-                        break
-                    }
-                }
-            }
-            if keep {
-                finalBoxes.append(b)
-            }
-        }
-        return finalBoxes
-    }
     
     private func runPrecisionDetection(cgImage: CGImage, cameraIndex: Int = 1) -> [CGRect] {
         var rawBoxes: [CGRect] = []

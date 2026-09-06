@@ -30,7 +30,7 @@ final class CoreMLYoloDetector {
         }
     }
     
-    func detect(cgImage: CGImage) -> [CGRect] {
+    func detect(cgImage: CGImage, minConfidence: Float = 0.28) -> [CGRect] {
         guard let visionModel = visionModel else { return [] }
         var resultBoxes: [CGRect] = []
         
@@ -39,11 +39,11 @@ final class CoreMLYoloDetector {
             for obs in observations {
                 if let featureObs = obs as? VNCoreMLFeatureValueObservation,
                    let multiArray = featureObs.featureValue.multiArrayValue {
-                    let boxes = self.parseYoloTensor(multiArray: multiArray)
+                    let boxes = self.parseYoloTensor(multiArray: multiArray, minConfidence: minConfidence)
                     resultBoxes.append(contentsOf: boxes)
                 } else if let recognizedObs = obs as? VNRecognizedObjectObservation {
                     for label in recognizedObs.labels {
-                        if (label.identifier == "person" || label.identifier == "head" || label.identifier == "0") && recognizedObs.confidence > 0.20 {
+                        if (label.identifier == "person" || label.identifier == "head" || label.identifier == "0") && recognizedObs.confidence >= minConfidence {
                             resultBoxes.append(recognizedObs.boundingBox)
                         }
                     }
@@ -58,8 +58,8 @@ final class CoreMLYoloDetector {
         return resultBoxes
     }
     
-    private func parseYoloTensor(multiArray: MLMultiArray) -> [CGRect] {
-        var rawBoxes: [CGRect] = []
+    private func parseYoloTensor(multiArray: MLMultiArray, minConfidence: Float = 0.28) -> [CGRect] {
+        var rawBoxes: [(box: CGRect, score: Float)] = []
         let strides = multiArray.strides.map { $0.intValue }
         let ptr = multiArray.dataPointer.bindMemory(to: Float.self, capacity: multiArray.count)
         
@@ -83,8 +83,8 @@ final class CoreMLYoloDetector {
                 maxScore = ptr[4 * strideChannel + i * strideAnchor]
             }
             
-            // Sensitive threshold (0.20) for clean YOLO head predictions (close-up and distant)
-            if maxScore >= 0.20 {
+            // Clean threshold (0.28) to eliminate microphones, instruments and desk objects
+            if maxScore >= minConfidence {
                 let cx = ptr[0 * strideChannel + i * strideAnchor] / 640.0
                 let cy = ptr[1 * strideChannel + i * strideAnchor] / 640.0
                 let w  = ptr[2 * strideChannel + i * strideAnchor] / 640.0
@@ -97,16 +97,18 @@ final class CoreMLYoloDetector {
                 let normY = max(CGFloat(0), CGFloat(1.0 - cy) - normH / 2.0)
                 
                 // Allow distant heads (min 0.0004 area) and close-up heads (up to 0.35 width, 0.40 height)
-                if normW <= 0.35 && normH <= 0.40 && (normW * normH) >= 0.0004 {
-                    rawBoxes.append(CGRect(x: normX, y: normY, width: normW, height: normH))
+                let aspect = normW / normH
+                if normW <= 0.35 && normH <= 0.40 && (normW * normH) >= 0.0004 && aspect >= 0.35 && aspect <= 1.60 {
+                    rawBoxes.append((box: CGRect(x: normX, y: normY, width: normW, height: normH), score: maxScore))
                 }
             }
         }
         
-        // Standard IoU Non-Maximum Suppression (NMS)
+        // Standard IoU Non-Maximum Suppression (NMS) sorted by confidence score DESCENDING
         var finalBoxes: [CGRect] = []
-        let sorted = rawBoxes.sorted { ($0.width * $0.height) < ($1.width * $1.height) }
-        for b in sorted {
+        let sorted = rawBoxes.sorted { $0.score > $1.score }
+        for item in sorted {
+            let b = item.box
             var keep = true
             for k in finalBoxes {
                 let inter = b.intersection(k)
@@ -114,7 +116,7 @@ final class CoreMLYoloDetector {
                     let interArea = inter.width * inter.height
                     let unionArea = (b.width * b.height) + (k.width * k.height) - interArea
                     let iou = interArea / unionArea
-                    if iou > 0.35 {
+                    if iou > 0.40 {
                         keep = false
                         break
                     }
@@ -150,7 +152,7 @@ class PersonTracker {
     private var trackedPeople: [InternalTrackedPerson] = []
     private var featureGallery: [Int: VNFeaturePrintObservation] = [:]
     private var nextId = 1
-    private let maxDisappeared = 30
+    private let maxDisappeared = 8 // ~0.8s grace period at 10fps
     private let minConfirmedFrames = 1
     
     func update(with newBoxes: [CGRect], cgImage: CGImage, distThreshold: CGFloat, alpha: CGFloat, isReIdEnabled: Bool, reIdSimilarity: Float) -> [(id: Int, box: CGRect)] {
@@ -254,11 +256,11 @@ class PeopleCounterService: ObservableObject {
     static let shared = PeopleCounterService()
     
     @Published var currentEngineMode: AiEngineMode = .coreMLYolo
-    @Published var confidenceThreshold: Float = 0.05
+    @Published var confidenceThreshold: Float = 0.28
     @Published var minObjectSize: Float = 0.001
     @Published var samplingFps: Int = 10
     @Published var trackingAlpha: Float = 0.85
-    @Published var maxMotionDistance: Float = 0.38
+    @Published var maxMotionDistance: Float = 0.15
     
     @Published var isReIdEnabled: Bool = true
     @Published var reIdSimilarity: Float = 0.80
@@ -328,60 +330,7 @@ class PeopleCounterService: ObservableObject {
     }
     
     private func runCoreMLYoloInference(cgImage: CGImage) -> [CGRect] {
-        let rawBoxes = CoreMLYoloDetector.shared.detect(cgImage: cgImage)
-        
-        // Filter to reasonable head dimensions (width <= 0.35, height <= 0.40)
-        var candidates = rawBoxes.filter { b in
-            let aspect = b.width / b.height
-            return b.width <= 0.35 && b.height <= 0.40 && aspect >= 0.40 && aspect <= 1.50 && (b.width * b.height) >= 0.0004
-        }
-        
-        // 1. Vertical Column Suppression: If two boxes are vertically stacked on the same X center,
-        // keep only the top box (the head, higher midY in Vision coords) and suppress lower torso box.
-        var suppressed: [CGRect] = []
-        for i in 0..<candidates.count {
-            let b1 = candidates[i]
-            for j in 0..<candidates.count {
-                if i == j { continue }
-                let b2 = candidates[j]
-                let xDist = abs(b1.midX - b2.midX)
-                let maxW = max(b1.width, b2.width)
-                let yDist = abs(b1.midY - b2.midY)
-                let maxH = max(b1.height, b2.height)
-                
-                if xDist < (maxW * 0.70) && yDist < (maxH * 2.0) {
-                    if b1.midY < b2.midY {
-                        suppressed.append(b1)
-                        break
-                    }
-                }
-            }
-        }
-        
-        candidates.removeAll { b in suppressed.contains(b) }
-        
-        // 2. Standard NMS
-        var finalBoxes: [CGRect] = []
-        let sorted = candidates.sorted { ($0.width * $0.height) < ($1.width * $1.height) }
-        for b in sorted {
-            var keep = true
-            for k in finalBoxes {
-                let inter = b.intersection(k)
-                if !inter.isNull {
-                    let interArea = inter.width * inter.height
-                    let unionArea = (b.width * b.height) + (k.width * k.height) - interArea
-                    let iou = interArea / unionArea
-                    if iou > 0.30 {
-                        keep = false
-                        break
-                    }
-                }
-            }
-            if keep {
-                finalBoxes.append(b)
-            }
-        }
-        return finalBoxes
+        return CoreMLYoloDetector.shared.detect(cgImage: cgImage, minConfidence: self.confidenceThreshold)
     }
     
     private func runPrecisionDetection(cgImage: CGImage, cameraIndex: Int = 1) -> [CGRect] {

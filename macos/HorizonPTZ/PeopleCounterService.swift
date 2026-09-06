@@ -256,7 +256,7 @@ class PeopleCounterService: ObservableObject {
     static let shared = PeopleCounterService()
     
     @Published var currentEngineMode: AiEngineMode = .coreMLYolo
-    @Published var confidenceThreshold: Float = 0.28
+    @Published var confidenceThreshold: Float = 0.25
     @Published var minObjectSize: Float = 0.001
     @Published var samplingFps: Int = 10
     @Published var trackingAlpha: Float = 0.85
@@ -314,6 +314,7 @@ class PeopleCounterService: ObservableObject {
                 reIdSimilarity: reIdSim
             )
             let resultHumans = trackedTuples.map { TrackedHuman(id: $0.id, box: $0.box) }
+            AppLogger.log("🔎 [Cam \(cameraIndex)] finalBoxes: \(finalBoxes.count), tracked: \(resultHumans.count)")
             
             DispatchQueue.main.async {
                 completion(AnalysisResult(

@@ -70,6 +70,7 @@ final class CoreMLYoloDetector {
         let strideChannel = strides.count > 1 ? strides[1] : numAnchors
         let strideAnchor = strides.count > 2 ? strides[2] : 1
         
+        var globalMaxScore: Float = 0.0
         for i in 0..<numAnchors {
             var maxScore: Float = 0.0
             if numChannels > 4 {
@@ -82,8 +83,11 @@ final class CoreMLYoloDetector {
             } else {
                 maxScore = ptr[4 * strideChannel + i * strideAnchor]
             }
+            if maxScore > globalMaxScore {
+                globalMaxScore = maxScore
+            }
             
-            // Clean threshold (0.28) to eliminate microphones, instruments and desk objects
+            // Clean threshold (minConfidence) to eliminate microphones, instruments and desk objects
             if maxScore >= minConfidence {
                 let cx = ptr[0 * strideChannel + i * strideAnchor] / 640.0
                 let cy = ptr[1 * strideChannel + i * strideAnchor] / 640.0
@@ -103,6 +107,8 @@ final class CoreMLYoloDetector {
                 }
             }
         }
+        
+        AppLogger.log("🔎 [parseYoloTensor] maxScore=\(String(format: "%.3f", globalMaxScore)), thresh=\(minConfidence), rawCount=\(rawBoxes.count)")
         
         // Standard IoU Non-Maximum Suppression (NMS) sorted by confidence score DESCENDING
         var finalBoxes: [CGRect] = []

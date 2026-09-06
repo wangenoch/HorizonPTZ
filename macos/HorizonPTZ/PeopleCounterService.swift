@@ -295,7 +295,12 @@ class PeopleCounterService: ObservableObject {
         let reIdSim = self.reIdSimilarity
         
         DispatchQueue.global(qos: .userInitiated).async {
-            let finalBoxes = self.runPrecisionDetection(cgImage: cgImage, cameraIndex: cameraIndex)
+            let finalBoxes: [CGRect]
+            if mode == .appleVision {
+                finalBoxes = self.runAppleVisionInference(cgImage: cgImage)
+            } else {
+                finalBoxes = self.runCoreMLYoloInference(cgImage: cgImage)
+            }
             
             let tracker = (cameraIndex == 1) ? self.tracker1 : self.tracker2
             let trackedTuples = tracker.update(

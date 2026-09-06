@@ -5,10 +5,12 @@ import CoreML
 
 final class CoreMLYoloDetector {
     static let shared = CoreMLYoloDetector()
-    private var visionModel: VNCoreMLModel?
+    private var headModel: VNCoreMLModel?
+    private var bodyModel: VNCoreMLModel?
     
     private init() {
-        let candidatePaths = [
+        // 1. Load Head Model (yolov8n-head)
+        let headCandidatePaths = [
             Bundle.main.url(forResource: "yolov8n-head", withExtension: "mlmodelc"),
             Bundle.main.url(forResource: "yolov8n_head", withExtension: "mlmodelc"),
             URL(fileURLWithPath: "/Users/enoch/Desktop/HorizonPTZ.app/Contents/Resources/yolov8n-head.mlmodelc"),
@@ -18,75 +20,166 @@ final class CoreMLYoloDetector {
             URL(fileURLWithPath: "/tmp/yolov8n_head.mlmodelc")
         ]
         
-        for path in candidatePaths {
+        for path in headCandidatePaths {
             if let url = path, FileManager.default.fileExists(atPath: url.path) {
                 if let mlModel = try? MLModel(contentsOf: url),
                    let vModel = try? VNCoreMLModel(for: mlModel) {
-                    self.visionModel = vModel
-                    print("🚀 [CoreMLYoloDetector] CoreML YOLO model loaded successfully from: \(url.path)")
+                    self.headModel = vModel
+                    print("🚀 [CoreMLYoloDetector] Head Model loaded successfully from: \(url.path)")
+                    break
+                }
+            }
+        }
+        
+        // 2. Load Body Model (yolov8n - COCO Person)
+        let bodyCandidatePaths = [
+            Bundle.main.url(forResource: "yolov8n", withExtension: "mlmodelc"),
+            URL(fileURLWithPath: "/Users/enoch/Desktop/HorizonPTZ.app/Contents/Resources/yolov8n.mlmodelc"),
+            URL(fileURLWithPath: "/Users/enoch/AndroidStudioProjects/HorizonPTZ/macos/HorizonPTZ/yolov8n.mlmodelc"),
+            URL(fileURLWithPath: "/tmp/yolov8n.mlmodelc")
+        ]
+        
+        for path in bodyCandidatePaths {
+            if let url = path, FileManager.default.fileExists(atPath: url.path) {
+                if let mlModel = try? MLModel(contentsOf: url),
+                   let vModel = try? VNCoreMLModel(for: mlModel) {
+                    self.bodyModel = vModel
+                    print("🚀 [CoreMLYoloDetector] Body (Person) Model loaded successfully from: \(url.path)")
                     break
                 }
             }
         }
     }
     
-    func detect(cgImage: CGImage, minConfidence: Float = 0.28) -> [CGRect] {
-        guard let visionModel = visionModel else { return [] }
-        var resultBoxes: [CGRect] = []
+    func detect(cgImage: CGImage, minConfidence: Float = 0.20) -> [CGRect] {
+        var bodyBoxes: [CGRect] = []
+        var headBoxes: [CGRect] = []
+        var requests: [VNRequest] = []
         
-        let request = VNCoreMLRequest(model: visionModel) { req, err in
-            guard let observations = req.results else { return }
-            for obs in observations {
-                if let featureObs = obs as? VNCoreMLFeatureValueObservation,
-                   let multiArray = featureObs.featureValue.multiArrayValue {
-                    let boxes = self.parseYoloTensor(multiArray: multiArray, minConfidence: minConfidence)
-                    resultBoxes.append(contentsOf: boxes)
-                } else if let recognizedObs = obs as? VNRecognizedObjectObservation {
-                    for label in recognizedObs.labels {
-                        if (label.identifier == "person" || label.identifier == "head" || label.identifier == "0") && recognizedObs.confidence >= minConfidence {
-                            resultBoxes.append(recognizedObs.boundingBox)
-                        }
-                    }
-                }
+        if let bodyModel = bodyModel {
+            let bodyReq = VNCoreMLRequest(model: bodyModel) { [weak self] req, _ in
+                guard let self = self,
+                      let obs = (req.results as? [VNCoreMLFeatureValueObservation])?.first,
+                      let multi = obs.featureValue.multiArrayValue else { return }
+                bodyBoxes = self.parseYoloTensorBody(multiArray: multi, minConfidence: 0.32)
+            }
+            bodyReq.imageCropAndScaleOption = .scaleFill
+            requests.append(bodyReq)
+        }
+        
+        if let headModel = headModel {
+            let headReq = VNCoreMLRequest(model: headModel) { [weak self] req, _ in
+                guard let self = self,
+                      let obs = (req.results as? [VNCoreMLFeatureValueObservation])?.first,
+                      let multi = obs.featureValue.multiArrayValue else { return }
+                headBoxes = self.parseYoloTensorHead(multiArray: multi, minConfidence: minConfidence)
+            }
+            headReq.imageCropAndScaleOption = .scaleFill
+            requests.append(headReq)
+        }
+        
+        guard !requests.isEmpty else { return [] }
+        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
+        try? handler.perform(requests)
+        
+        // Global Hierarchical Fusion:
+        // 1. Every detected person body is a confirmed primary individual
+        var finalBoxes: [CGRect] = bodyBoxes
+        var fusedHeadCount = 0
+        var occludedHeadCount = 0
+        
+        for head in headBoxes {
+            let hCenter = CGPoint(x: head.midX, y: head.midY)
+            let isInsideAnyBody = bodyBoxes.contains { body in
+                // Head sits in the upper region of the body (in Vision coords, higher Y is top)
+                let upperBody = CGRect(
+                    x: body.minX - 0.03,
+                    y: body.minY + body.height * 0.40,
+                    width: body.width + 0.06,
+                    height: body.height * 0.75
+                )
+                return upperBody.contains(hCenter)
+            }
+            
+            if isInsideAnyBody {
+                // Associated as the same person (deduplicated)
+                fusedHeadCount += 1
+            } else {
+                // Occluded person: body hidden, but head is visible (e.g. seated audience)
+                finalBoxes.append(head)
+                occludedHeadCount += 1
             }
         }
         
-        request.imageCropAndScaleOption = .scaleFill
-        let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
-        try? handler.perform([request])
-        
-        return resultBoxes
+        AppLogger.log("🎯 [Hierarchical Fusion] Bodies: \(bodyBoxes.count), Heads: \(headBoxes.count) (Fused: \(fusedHeadCount), OccludedHeads: \(occludedHeadCount)) -> Total: \(finalBoxes.count)")
+        return finalBoxes
     }
     
-    private func parseYoloTensor(multiArray: MLMultiArray, minConfidence: Float = 0.28) -> [CGRect] {
+    private func parseYoloTensorBody(multiArray: MLMultiArray, minConfidence: Float = 0.32) -> [CGRect] {
         var rawBoxes: [(box: CGRect, score: Float)] = []
         let strides = multiArray.strides.map { $0.intValue }
         let ptr = multiArray.dataPointer.bindMemory(to: Float.self, capacity: multiArray.count)
         
         let shape = multiArray.shape.map { $0.intValue }
-        let numChannels = shape.count > 1 ? shape[1] : 84
         let numAnchors = shape.count > 2 ? shape[2] : 8400
-        
         let strideChannel = strides.count > 1 ? strides[1] : numAnchors
         let strideAnchor = strides.count > 2 ? strides[2] : 1
         
-        var globalMaxScore: Float = 0.0
         for i in 0..<numAnchors {
-            var maxScore: Float = 0.0
-            if numChannels > 4 {
-                for c in 4..<numChannels {
-                    let s = ptr[c * strideChannel + i * strideAnchor]
-                    if s > maxScore {
-                        maxScore = s
+            let score = ptr[4 * strideChannel + i * strideAnchor] // class 0 is 'person'
+            if score >= minConfidence {
+                let cx = ptr[0 * strideChannel + i * strideAnchor] / 640.0
+                let cy = ptr[1 * strideChannel + i * strideAnchor] / 640.0
+                let w  = ptr[2 * strideChannel + i * strideAnchor] / 640.0
+                let h  = ptr[3 * strideChannel + i * strideAnchor] / 640.0
+                
+                let normW = CGFloat(w)
+                let normH = CGFloat(h)
+                let normX = max(CGFloat(0), CGFloat(cx) - normW / 2.0)
+                let normY = max(CGFloat(0), CGFloat(1.0 - cy) - normH / 2.0)
+                
+                if normH >= 0.08 && normW <= 0.85 && (normW / normH) <= 1.50 {
+                    rawBoxes.append((box: CGRect(x: normX, y: normY, width: normW, height: normH), score: score))
+                }
+            }
+        }
+        
+        var finalBoxes: [CGRect] = []
+        let sorted = rawBoxes.sorted { $0.score > $1.score }
+        for item in sorted {
+            let b = item.box
+            var keep = true
+            for k in finalBoxes {
+                let inter = b.intersection(k)
+                if !inter.isNull {
+                    let interArea = inter.width * inter.height
+                    let unionArea = (b.width * b.height) + (k.width * k.height) - interArea
+                    let iou = interArea / unionArea
+                    if iou > 0.40 {
+                        keep = false
+                        break
                     }
                 }
-            } else {
-                maxScore = ptr[4 * strideChannel + i * strideAnchor]
             }
-            if maxScore > globalMaxScore {
-                globalMaxScore = maxScore
+            if keep {
+                finalBoxes.append(b)
             }
-            
+        }
+        return finalBoxes
+    }
+    
+    private func parseYoloTensorHead(multiArray: MLMultiArray, minConfidence: Float = 0.20) -> [CGRect] {
+        var rawBoxes: [(box: CGRect, score: Float)] = []
+        let strides = multiArray.strides.map { $0.intValue }
+        let ptr = multiArray.dataPointer.bindMemory(to: Float.self, capacity: multiArray.count)
+        
+        let shape = multiArray.shape.map { $0.intValue }
+        let numAnchors = shape.count > 2 ? shape[2] : 8400
+        let strideChannel = strides.count > 1 ? strides[1] : numAnchors
+        let strideAnchor = strides.count > 2 ? strides[2] : 1
+        
+        for i in 0..<numAnchors {
+            let score = ptr[4 * strideChannel + i * strideAnchor]
             let cx = ptr[0 * strideChannel + i * strideAnchor] / 640.0
             let cy = ptr[1 * strideChannel + i * strideAnchor] / 640.0
             let w  = ptr[2 * strideChannel + i * strideAnchor] / 640.0
@@ -94,27 +187,22 @@ final class CoreMLYoloDetector {
             
             let normW = CGFloat(w)
             let normH = CGFloat(h)
-            
             let normX = max(CGFloat(0), CGFloat(cx) - normW / 2.0)
             let normY = max(CGFloat(0), CGFloat(1.0 - cy) - normH / 2.0)
             
             // Adaptive noise suppression:
-            // Tiny objects (width < 0.055 and area < 0.005) like microphones/stands require 0.35 confidence!
-            // Real human heads (area >= 0.005) use minConfidence (0.20) for full recall!
+            // Tiny isolated objects (width < 0.055 and area < 0.005) like microphones/stands require 0.38 confidence!
             let isTinyNoise = (normW < 0.055 && (normW * normH) < 0.005)
-            let requiredConf = isTinyNoise ? 0.35 : minConfidence
+            let requiredConf = isTinyNoise ? 0.38 : minConfidence
             
-            if maxScore >= requiredConf {
+            if score >= requiredConf {
                 let aspect = normW / normH
                 if normW <= 0.35 && normH <= 0.40 && (normW * normH) >= 0.0004 && aspect >= 0.35 && aspect <= 1.60 {
-                    rawBoxes.append((box: CGRect(x: normX, y: normY, width: normW, height: normH), score: maxScore))
+                    rawBoxes.append((box: CGRect(x: normX, y: normY, width: normW, height: normH), score: score))
                 }
             }
         }
         
-        AppLogger.log("🔎 [parseYoloTensor] maxScore=\(String(format: "%.3f", globalMaxScore)), thresh=\(minConfidence), rawCount=\(rawBoxes.count)")
-        
-        // Standard IoU Non-Maximum Suppression (NMS) sorted by confidence score DESCENDING
         var finalBoxes: [CGRect] = []
         let sorted = rawBoxes.sorted { $0.score > $1.score }
         for item in sorted {

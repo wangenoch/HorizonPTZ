@@ -323,11 +323,44 @@ class PeopleCounterService: ObservableObject {
     }
     
     private func runCoreMLYoloInference(cgImage: CGImage) -> [CGRect] {
-        let yoloBoxes = CoreMLYoloDetector.shared.detect(cgImage: cgImage)
+        var rawBoxes = CoreMLYoloDetector.shared.detect(cgImage: cgImage)
         
-        var candidates = yoloBoxes.filter { b in
-            // Strict head caps: width <= 0.14, height <= 0.18 (Head only)
-            return b.width <= 0.14 && b.height <= 0.18 && (b.width * b.height) >= 0.0006
+        // Tile Sub-crop Scanning (SAHI): Crop audience seating sub-tiles (bottom 70% left & right) to magnify distant head resolution by 4x
+        let w = CGFloat(cgImage.width)
+        let h = CGFloat(cgImage.height)
+        if w > 320 && h > 240 {
+            // Tile 1: Seating Left (x: 0..60%, y: 30%..100%)
+            let rectLeft = CGRect(x: 0, y: h * 0.30, width: w * 0.60, height: h * 0.70)
+            if let cropLeft = cgImage.cropping(to: rectLeft) {
+                let tileBoxes = CoreMLYoloDetector.shared.detect(cgImage: cropLeft)
+                for b in tileBoxes {
+                    // Map tile coordinates back to full image normalized space
+                    let fullX = (b.origin.x * rectLeft.width) / w
+                    let fullY = ((b.origin.y * rectLeft.height) + (h * 0.30)) / h
+                    let fullW = (b.width * rectLeft.width) / w
+                    let fullH = (b.height * rectLeft.height) / h
+                    rawBoxes.append(CGRect(x: fullX, y: fullY, width: fullW, height: fullH))
+                }
+            }
+            
+            // Tile 2: Seating Right (x: 40%..100%, y: 30%..100%)
+            let rectRight = CGRect(x: w * 0.40, y: h * 0.30, width: w * 0.60, height: h * 0.70)
+            if let cropRight = cgImage.cropping(to: rectRight) {
+                let tileBoxes = CoreMLYoloDetector.shared.detect(cgImage: cropRight)
+                for b in tileBoxes {
+                    let fullX = ((b.origin.x * rectRight.width) + (w * 0.40)) / w
+                    let fullY = ((b.origin.y * rectRight.height) + (h * 0.30)) / h
+                    let fullW = (b.width * rectRight.width) / w
+                    let fullH = (b.height * rectRight.height) / h
+                    rawBoxes.append(CGRect(x: fullX, y: fullY, width: fullW, height: fullH))
+                }
+            }
+        }
+        
+        // Filter to strict head dimensions (width <= 0.14, height <= 0.16)
+        var candidates = rawBoxes.filter { b in
+            let aspect = b.width / b.height
+            return b.width <= 0.14 && b.height <= 0.16 && aspect >= 0.50 && aspect <= 1.40 && (b.width * b.height) >= 0.0005
         }
         
         // 1. Vertical Column Suppression: If two boxes are vertically stacked on the same X center,
@@ -343,9 +376,7 @@ class PeopleCounterService: ObservableObject {
                 let yDist = abs(b1.midY - b2.midY)
                 let maxH = max(b1.height, b2.height)
                 
-                // If aligned horizontally (X difference < 50% width) and stacked vertically (Y distance < 1.8x height)
-                if xDist < (maxW * 0.50) && yDist < (maxH * 1.80) {
-                    // b1 is lower torso (smaller midY), b2 is higher head (larger midY) -> suppress b1!
+                if xDist < (maxW * 0.75) && yDist < (maxH * 2.20) {
                     if b1.midY < b2.midY {
                         suppressed.append(b1)
                         break

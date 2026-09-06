@@ -325,12 +325,40 @@ class PeopleCounterService: ObservableObject {
     private func runCoreMLYoloInference(cgImage: CGImage) -> [CGRect] {
         let yoloBoxes = CoreMLYoloDetector.shared.detect(cgImage: cgImage)
         
-        var finalBoxes: [CGRect] = []
-        let sorted = yoloBoxes.filter { b in
+        var candidates = yoloBoxes.filter { b in
             // Strict head caps: width <= 0.14, height <= 0.18 (Head only)
             return b.width <= 0.14 && b.height <= 0.18 && (b.width * b.height) >= 0.0006
-        }.sorted { ($0.width * $0.height) < ($1.width * $1.height) }
+        }
         
+        // 1. Vertical Column Suppression: If two boxes are vertically stacked on the same X center,
+        // keep only the top box (the head, higher midY in Vision coords) and suppress lower torso box.
+        var suppressed: [CGRect] = []
+        for i in 0..<candidates.count {
+            let b1 = candidates[i]
+            for j in 0..<candidates.count {
+                if i == j { continue }
+                let b2 = candidates[j]
+                let xDist = abs(b1.midX - b2.midX)
+                let maxW = max(b1.width, b2.width)
+                let yDist = abs(b1.midY - b2.midY)
+                let maxH = max(b1.height, b2.height)
+                
+                // If aligned horizontally (X difference < 50% width) and stacked vertically (Y distance < 1.8x height)
+                if xDist < (maxW * 0.50) && yDist < (maxH * 1.80) {
+                    // b1 is lower torso (smaller midY), b2 is higher head (larger midY) -> suppress b1!
+                    if b1.midY < b2.midY {
+                        suppressed.append(b1)
+                        break
+                    }
+                }
+            }
+        }
+        
+        candidates.removeAll { b in suppressed.contains(b) }
+        
+        // 2. Standard NMS
+        var finalBoxes: [CGRect] = []
+        let sorted = candidates.sorted { ($0.width * $0.height) < ($1.width * $1.height) }
         for b in sorted {
             var keep = true
             for k in finalBoxes {

@@ -51,7 +51,7 @@ final class CoreMLYoloDetector {
         }
     }
     
-    func detect(cgImage: CGImage, minConfidence: Float = 0.20) -> [CGRect] {
+    func detect(cgImage: CGImage, minConfidence: Float = 0.20, isAudienceView: Bool = false) -> [CGRect] {
         var bodyBoxes: [CGRect] = []
         var headBoxes: [CGRect] = []
         var requests: [VNRequest] = []
@@ -82,6 +82,74 @@ final class CoreMLYoloDetector {
         let handler = VNImageRequestHandler(cgImage: cgImage, options: [:])
         try? handler.perform(requests)
         
+        // SAHI: Slicing Aided Hyper Inference (Double pixel resolution for small targets in audience view)
+        if isAudienceView, let headModel = headModel {
+            let fullW = cgImage.width
+            let fullH = cgImage.height
+            let sliceW = Int(Double(fullW) * 0.60)
+            
+            // Left 60% slice
+            let leftRect = CGRect(x: 0, y: 0, width: sliceW, height: fullH)
+            if let leftCg = cgImage.cropping(to: leftRect) {
+                var sliceHeads: [CGRect] = []
+                let sReq = VNCoreMLRequest(model: headModel) { [weak self] req, _ in
+                    guard let self = self,
+                          let obs = (req.results as? [VNCoreMLFeatureValueObservation])?.first,
+                          let multi = obs.featureValue.multiArrayValue else { return }
+                    sliceHeads = self.parseYoloTensorHead(multiArray: multi, minConfidence: minConfidence)
+                }
+                sReq.imageCropAndScaleOption = .scaleFill
+                let sHandler = VNImageRequestHandler(cgImage: leftCg, options: [:])
+                try? sHandler.perform([sReq])
+                
+                for b in sliceHeads {
+                    let mapped = CGRect(x: b.origin.x * 0.60, y: b.origin.y, width: b.width * 0.60, height: b.height)
+                    headBoxes.append(mapped)
+                }
+            }
+            
+            // Right 60% slice
+            let rightRect = CGRect(x: fullW - sliceW, y: 0, width: sliceW, height: fullH)
+            if let rightCg = cgImage.cropping(to: rightRect) {
+                var sliceHeads: [CGRect] = []
+                let sReq = VNCoreMLRequest(model: headModel) { [weak self] req, _ in
+                    guard let self = self,
+                          let obs = (req.results as? [VNCoreMLFeatureValueObservation])?.first,
+                          let multi = obs.featureValue.multiArrayValue else { return }
+                    sliceHeads = self.parseYoloTensorHead(multiArray: multi, minConfidence: minConfidence)
+                }
+                sReq.imageCropAndScaleOption = .scaleFill
+                let sHandler = VNImageRequestHandler(cgImage: rightCg, options: [:])
+                try? sHandler.perform([sReq])
+                
+                let startX = CGFloat(fullW - sliceW) / CGFloat(fullW)
+                for b in sliceHeads {
+                    let mapped = CGRect(x: startX + b.origin.x * 0.60, y: b.origin.y, width: b.width * 0.60, height: b.height)
+                    headBoxes.append(mapped)
+                }
+            }
+            
+            // Unified NMS on headBoxes after SAHI
+            var nmsHeads: [CGRect] = []
+            let sortedHeads = headBoxes.sorted { ($0.width * $0.height) > ($1.width * $1.height) }
+            for b in sortedHeads {
+                var keep = true
+                for k in nmsHeads {
+                    let inter = b.intersection(k)
+                    if !inter.isNull {
+                        let interArea = inter.width * inter.height
+                        let unionArea = (b.width * b.height) + (k.width * k.height) - interArea
+                        if interArea / unionArea > 0.35 {
+                            keep = false
+                            break
+                        }
+                    }
+                }
+                if keep { nmsHeads.append(b) }
+            }
+            headBoxes = nmsHeads
+        }
+        
         // Global Hierarchical Fusion:
         // 1. Every detected person body is a confirmed primary individual
         var finalBoxes: [CGRect] = bodyBoxes
@@ -93,10 +161,10 @@ final class CoreMLYoloDetector {
             let isInsideAnyBody = bodyBoxes.contains { body in
                 // Head sits in the upper region of the body (in Vision coords, higher Y is top)
                 let upperBody = CGRect(
-                    x: body.minX - 0.03,
-                    y: body.minY + body.height * 0.40,
-                    width: body.width + 0.06,
-                    height: body.height * 0.75
+                    x: body.minX - 0.04,
+                    y: body.minY + body.height * 0.35,
+                    width: body.width + 0.08,
+                    height: body.height * 0.80
                 )
                 return upperBody.contains(hCenter)
             }
@@ -105,9 +173,12 @@ final class CoreMLYoloDetector {
                 // Associated as the same person (deduplicated)
                 fusedHeadCount += 1
             } else {
-                // Occluded person: body hidden, but head is visible (e.g. seated audience)
-                finalBoxes.append(head)
-                occludedHeadCount += 1
+                // Stage equipment filter: isolated tiny head high up on stand with no body
+                let isSuspiciousMicStand = (!isAudienceView && head.width < 0.065 && head.midY > 0.45)
+                if !isSuspiciousMicStand {
+                    finalBoxes.append(head)
+                    occludedHeadCount += 1
+                }
             }
         }
         
@@ -251,7 +322,7 @@ class PersonTracker {
     private var featureGallery: [Int: VNFeaturePrintObservation] = [:]
     private var nextId = 1
     private let maxDisappeared = 8 // ~0.8s grace period at 10fps
-    private let minConfirmedFrames = 1
+    private let minConfirmedFrames = 2
     
     func update(with newBoxes: [CGRect], cgImage: CGImage, distThreshold: CGFloat, alpha: CGFloat, isReIdEnabled: Bool, reIdSimilarity: Float) -> [(id: Int, box: CGRect)] {
         if trackedPeople.isEmpty {
@@ -259,7 +330,7 @@ class PersonTracker {
                 let assignedId = resolveOrAssignId(for: box, cgImage: cgImage, isReIdEnabled: isReIdEnabled, reIdSimilarity: reIdSimilarity)
                 trackedPeople.append(InternalTrackedPerson(id: assignedId, box: box, disappeared: 0, confirmedFrames: 1))
             }
-            return trackedPeople.filter { $0.confirmedFrames >= minConfirmedFrames }.map { ($0.id, $0.box) }
+            return trackedPeople.filter { $0.confirmedFrames >= minConfirmedFrames && $0.disappeared <= 2 }.map { ($0.id, $0.box) }
         }
         
         var matches: [(trackedIdx: Int, newBoxIdx: Int, distance: CGFloat)] = []
@@ -332,7 +403,7 @@ class PersonTracker {
         }
         
         trackedPeople = updatedTracked
-        return trackedPeople.filter { $0.confirmedFrames >= minConfirmedFrames }
+        return trackedPeople.filter { $0.confirmedFrames >= minConfirmedFrames && $0.disappeared <= 2 }
             .sorted { $0.id < $1.id }
             .map { ($0.id, $0.box) }
     }
@@ -399,7 +470,7 @@ class PeopleCounterService: ObservableObject {
             if mode == .appleVision {
                 finalBoxes = self.runAppleVisionInference(cgImage: cgImage)
             } else {
-                finalBoxes = self.runCoreMLYoloInference(cgImage: cgImage)
+                finalBoxes = self.runCoreMLYoloInference(cgImage: cgImage, cameraIndex: cameraIndex)
             }
             
             let tracker = (cameraIndex == 1) ? self.tracker1 : self.tracker2
@@ -428,8 +499,8 @@ class PeopleCounterService: ObservableObject {
         return runPrecisionDetection(cgImage: cgImage)
     }
     
-    private func runCoreMLYoloInference(cgImage: CGImage) -> [CGRect] {
-        return CoreMLYoloDetector.shared.detect(cgImage: cgImage, minConfidence: self.confidenceThreshold)
+    private func runCoreMLYoloInference(cgImage: CGImage, cameraIndex: Int = 1) -> [CGRect] {
+        return CoreMLYoloDetector.shared.detect(cgImage: cgImage, minConfidence: self.confidenceThreshold, isAudienceView: (cameraIndex == 1))
     }
     
     private func runPrecisionDetection(cgImage: CGImage, cameraIndex: Int = 1) -> [CGRect] {

@@ -72,7 +72,7 @@ final class CoreMLYoloDetector {
                 guard let self = self,
                       let obs = (req.results as? [VNCoreMLFeatureValueObservation])?.first,
                       let multi = obs.featureValue.multiArrayValue else { return }
-                headBoxes = self.parseYoloTensorHead(multiArray: multi, minConfidence: minConfidence)
+                headBoxes = self.parseYoloTensorHead(multiArray: multi, minConfidence: minConfidence, isAudienceView: isAudienceView)
             }
             headReq.imageCropAndScaleOption = .scaleFill
             requests.append(headReq)
@@ -96,7 +96,7 @@ final class CoreMLYoloDetector {
                     guard let self = self,
                           let obs = (req.results as? [VNCoreMLFeatureValueObservation])?.first,
                           let multi = obs.featureValue.multiArrayValue else { return }
-                    sliceHeads = self.parseYoloTensorHead(multiArray: multi, minConfidence: minConfidence)
+                    sliceHeads = self.parseYoloTensorHead(multiArray: multi, minConfidence: minConfidence, isAudienceView: true)
                 }
                 sReq.imageCropAndScaleOption = .scaleFill
                 let sHandler = VNImageRequestHandler(cgImage: leftCg, options: [:])
@@ -116,7 +116,7 @@ final class CoreMLYoloDetector {
                     guard let self = self,
                           let obs = (req.results as? [VNCoreMLFeatureValueObservation])?.first,
                           let multi = obs.featureValue.multiArrayValue else { return }
-                    sliceHeads = self.parseYoloTensorHead(multiArray: multi, minConfidence: minConfidence)
+                    sliceHeads = self.parseYoloTensorHead(multiArray: multi, minConfidence: minConfidence, isAudienceView: true)
                 }
                 sReq.imageCropAndScaleOption = .scaleFill
                 let sHandler = VNImageRequestHandler(cgImage: rightCg, options: [:])
@@ -150,39 +150,29 @@ final class CoreMLYoloDetector {
             headBoxes = nmsHeads
         }
         
-        // Global Hierarchical Fusion:
-        // 1. Every detected person body is a confirmed primary individual
-        var finalBoxes: [CGRect] = bodyBoxes
-        var fusedHeadCount = 0
-        var occludedHeadCount = 0
+        // Head-First Hierarchical Fusion:
+        // 1. In congregation/auditorium settings, every detected head represents a confirmed individual.
+        var finalBoxes: [CGRect] = headBoxes
+        var headlessBodiesCount = 0
         
-        for head in headBoxes {
-            let hCenter = CGPoint(x: head.midX, y: head.midY)
-            let isInsideAnyBody = bodyBoxes.contains { body in
-                // Head sits in the upper region of the body (in Vision coords, higher Y is top)
+        // 2. Add detected bodies that do not have an associated head (e.g. head occluded, looking down)
+        for body in bodyBoxes {
+            let hasAssociatedHead = headBoxes.contains { head in
                 let upperBody = CGRect(
                     x: body.minX - 0.04,
                     y: body.minY + body.height * 0.35,
                     width: body.width + 0.08,
                     height: body.height * 0.80
                 )
-                return upperBody.contains(hCenter)
+                return upperBody.contains(CGPoint(x: head.midX, y: head.midY))
             }
-            
-            if isInsideAnyBody {
-                // Associated as the same person (deduplicated)
-                fusedHeadCount += 1
-            } else {
-                // Stage equipment filter: isolated tiny head high up on stand with no body
-                let isSuspiciousMicStand = (!isAudienceView && head.width < 0.065 && head.midY > 0.45)
-                if !isSuspiciousMicStand {
-                    finalBoxes.append(head)
-                    occludedHeadCount += 1
-                }
+            if !hasAssociatedHead {
+                finalBoxes.append(body)
+                headlessBodiesCount += 1
             }
         }
         
-        AppLogger.log("🎯 [Hierarchical Fusion] Bodies: \(bodyBoxes.count), Heads: \(headBoxes.count) (Fused: \(fusedHeadCount), OccludedHeads: \(occludedHeadCount)) -> Total: \(finalBoxes.count)")
+        AppLogger.log("🎯 [Head-First Fusion] Heads: \(headBoxes.count), Bodies: \(bodyBoxes.count) (HeadlessBodies: \(headlessBodiesCount)) -> Total: \(finalBoxes.count)")
         return finalBoxes
     }
     
@@ -239,7 +229,7 @@ final class CoreMLYoloDetector {
         return finalBoxes
     }
     
-    private func parseYoloTensorHead(multiArray: MLMultiArray, minConfidence: Float = 0.20) -> [CGRect] {
+    private func parseYoloTensorHead(multiArray: MLMultiArray, minConfidence: Float = 0.20, isAudienceView: Bool = false) -> [CGRect] {
         var rawBoxes: [(box: CGRect, score: Float)] = []
         let strides = multiArray.strides.map { $0.intValue }
         let ptr = multiArray.dataPointer.bindMemory(to: Float.self, capacity: multiArray.count)
@@ -262,9 +252,9 @@ final class CoreMLYoloDetector {
             let normY = max(CGFloat(0), CGFloat(1.0 - cy) - normH / 2.0)
             
             // Adaptive noise suppression:
-            // Tiny isolated objects (width < 0.055 and area < 0.005) like microphones/stands require 0.38 confidence!
-            let isTinyNoise = (normW < 0.055 && (normW * normH) < 0.005)
-            let requiredConf = isTinyNoise ? 0.38 : minConfidence
+            // Microphone stands on stage (non-audience view, high up, narrow width) require high confidence
+            let isStageMic = (!isAudienceView && normW < 0.065 && (normY + normH / 2.0) > 0.45)
+            let requiredConf = isStageMic ? 0.45 : minConfidence
             
             if score >= requiredConf {
                 let aspect = normW / normH
@@ -321,7 +311,7 @@ class PersonTracker {
     private var trackedPeople: [InternalTrackedPerson] = []
     private var featureGallery: [Int: VNFeaturePrintObservation] = [:]
     private var nextId = 1
-    private let maxDisappeared = 8 // ~0.8s grace period at 10fps
+    private let maxDisappeared = 15 // ~1.5s grace period at 10fps
     private let minConfirmedFrames = 2
     
     func update(with newBoxes: [CGRect], cgImage: CGImage, distThreshold: CGFloat, alpha: CGFloat, isReIdEnabled: Bool, reIdSimilarity: Float) -> [(id: Int, box: CGRect)] {
@@ -330,7 +320,7 @@ class PersonTracker {
                 let assignedId = resolveOrAssignId(for: box, cgImage: cgImage, isReIdEnabled: isReIdEnabled, reIdSimilarity: reIdSimilarity)
                 trackedPeople.append(InternalTrackedPerson(id: assignedId, box: box, disappeared: 0, confirmedFrames: 1))
             }
-            return trackedPeople.filter { $0.confirmedFrames >= minConfirmedFrames && $0.disappeared <= 2 }.map { ($0.id, $0.box) }
+            return trackedPeople.filter { $0.confirmedFrames >= minConfirmedFrames && $0.disappeared <= 12 }.map { ($0.id, $0.box) }
         }
         
         var matches: [(trackedIdx: Int, newBoxIdx: Int, distance: CGFloat)] = []
@@ -403,7 +393,7 @@ class PersonTracker {
         }
         
         trackedPeople = updatedTracked
-        return trackedPeople.filter { $0.confirmedFrames >= minConfirmedFrames && $0.disappeared <= 2 }
+        return trackedPeople.filter { $0.confirmedFrames >= minConfirmedFrames && $0.disappeared <= 12 }
             .sorted { $0.id < $1.id }
             .map { ($0.id, $0.box) }
     }
@@ -425,7 +415,7 @@ class PeopleCounterService: ObservableObject {
     static let shared = PeopleCounterService()
     
     @Published var currentEngineMode: AiEngineMode = .coreMLYolo
-    @Published var confidenceThreshold: Float = 0.20
+    @Published var confidenceThreshold: Float = 0.15
     @Published var minObjectSize: Float = 0.001
     @Published var samplingFps: Int = 10
     @Published var trackingAlpha: Float = 0.85

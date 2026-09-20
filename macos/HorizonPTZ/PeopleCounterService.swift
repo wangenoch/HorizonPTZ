@@ -155,6 +155,13 @@ final class CoreMLYoloDetector {
                 if keep { nmsHeads.append(b) }
             }
             headBoxes = nmsHeads
+            
+            // Filter non-human stage equipment (overhead projector lamp/table and boom mic)
+            headBoxes = headBoxes.filter { b in
+                let isProjectorTable = (b.midX > 0.54 && b.midX < 0.61 && b.midY > 0.40 && b.midY < 0.50)
+                let isStageBoomMic = (b.width < 0.045 && b.midY > 0.45 && b.midX > 0.62 && b.midX < 0.72)
+                return !isProjectorTable && !isStageBoomMic
+            }
         }
         
         // Head-First Hierarchical Fusion:

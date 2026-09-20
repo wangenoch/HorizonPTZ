@@ -139,7 +139,14 @@ final class CoreMLYoloDetector {
                     if !inter.isNull {
                         let interArea = inter.width * inter.height
                         let unionArea = (b.width * b.height) + (k.width * k.height) - interArea
-                        if interArea / unionArea > 0.35 {
+                        let iou = interArea / unionArea
+                        let dx = abs(b.midX - k.midX)
+                        let dy = abs(b.midY - k.midY)
+                        let minW = min(b.width, k.width)
+                        let minH = min(b.height, k.height)
+                        
+                        // Merge duplicate detections across full-frame and SAHI slices
+                        if iou > 0.20 || (dx < minW * 0.55 && dy < minH * 0.55) {
                             keep = false
                             break
                         }
@@ -252,9 +259,9 @@ final class CoreMLYoloDetector {
             let normY = max(CGFloat(0), CGFloat(1.0 - cy) - normH / 2.0)
             
             // Adaptive noise suppression:
-            // Microphone stands on stage (non-audience view, high up, narrow width) require high confidence
-            let isStageMic = (!isAudienceView && normW < 0.065 && (normY + normH / 2.0) > 0.45)
-            let requiredConf = isStageMic ? 0.45 : minConfidence
+            // Microphone stands on stage (floating high up on boom stand, narrow width) require high confidence
+            let isStageMic = (normW < 0.045 && (normY + normH / 2.0) > 0.45 && normX > 0.45 && normX < 0.75) || (!isAudienceView && normW < 0.065 && (normY + normH / 2.0) > 0.45)
+            let requiredConf = isStageMic ? 0.85 : minConfidence
             
             if score >= requiredConf {
                 let aspect = normW / normH

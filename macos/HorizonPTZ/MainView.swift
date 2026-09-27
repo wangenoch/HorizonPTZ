@@ -143,17 +143,14 @@ struct MainView: View {
                 }
             }
             .padding(10)
-            .background(Color(nsColor: .windowBackgroundColor))
+            Divider()
+            
+            topSectionView
             
             Divider()
             
-            VSplitView {
-                topSectionView
-                    .frame(minHeight: 280, idealHeight: 360, maxHeight: 520)
-                
-                bottomSectionView
-                    .frame(minHeight: 200, maxHeight: .infinity)
-            }
+            bottomSectionView
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .onAppear {
             initializeClients()
@@ -263,13 +260,17 @@ struct MainView: View {
                 SwitcherControlView(layoutStyle: .rightSidebar, isAiLiveEnabled: $isAiLiveEnabled)
                     .frame(width: 235)
             }
-            .padding(12)
+            .padding(.horizontal, 12)
+            .padding(.top, 8)
+            .padding(.bottom, 6)
         default:
             HStack(spacing: 12) {
                 tabbedPanel(index: 1, selection: $leftTabSelection, config: cam1Config, client: viscaClient1)
                 tabbedPanel(index: 2, selection: $rightTabSelection, config: cam2Config, client: viscaClient2)
             }
-            .padding(12)
+            .padding(.horizontal, 12)
+            .padding(.top, 8)
+            .padding(.bottom, 6)
         }
     }
     
@@ -310,7 +311,7 @@ struct MainView: View {
             }
         default:
             YouTubeStudioDashboardView()
-                .frame(minHeight: 220, maxHeight: .infinity)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
     
@@ -318,7 +319,7 @@ struct MainView: View {
         let isPgm = (rgbClient.pgmSource == (index - 1))
         let isPst = (rgbClient.pstSource == (index - 1))
         
-        return VStack(spacing: 8) {
+        return VStack(spacing: 6) {
             // Header with Switcher & Tally Badge
             HStack(spacing: 8) {
                 Text(selection.wrappedValue == 0 ? config.camName : (selection.wrappedValue == 1 ? "網頁監控 0\(index)" : "導播控制 0\(index)"))
@@ -413,7 +414,7 @@ struct MainView: View {
         let tallyColor: Color = isPgm ? .red : (isPst ? .green : Color.secondary.opacity(0.3))
         let tallyLineWidth: CGFloat = (isPgm || isPst) ? 3.5 : 1.0
         
-        return VStack(spacing: 8) {
+        return VStack(spacing: 6) {
             // Video Player Area
             ZStack {
                 PlayerView(rtspUrl: config.rtspUrl, index: index, isAiEnabled: $isAiLiveEnabled)

@@ -52,6 +52,46 @@ final class PipeStreamManager {
         spawnProcess(index: index, rtspUrl: rtspUrl, onFrame: onFrame)
     }
     
+    static func findFFmpegURL() -> URL? {
+        // 1. App Bundle Resources
+        if let bundlePath = Bundle.main.resourceURL?.appendingPathComponent("ffmpeg").path,
+           FileManager.default.isExecutableFile(atPath: bundlePath) {
+            return URL(fileURLWithPath: bundlePath)
+        }
+        
+        // 2. Common system & Homebrew paths (Intel: /usr/local/bin, Apple Silicon: /opt/homebrew/bin)
+        let candidates = [
+            "/usr/local/bin/ffmpeg",    // Intel Mac Homebrew default
+            "/opt/homebrew/bin/ffmpeg", // Apple Silicon Homebrew default
+            "/usr/bin/ffmpeg",          // System path
+            "/opt/local/bin/ffmpeg",    // MacPorts
+            "/usr/pkg/bin/ffmpeg"
+        ]
+        for path in candidates {
+            if FileManager.default.isExecutableFile(atPath: path) {
+                return URL(fileURLWithPath: path)
+            }
+        }
+        
+        // 3. User local bin
+        let home = FileManager.default.homeDirectoryForCurrentUser.path
+        let userCandidates = [
+            "\(home)/.local/bin/ffmpeg",
+            "\(home)/bin/ffmpeg"
+        ]
+        for path in userCandidates {
+            if FileManager.default.isExecutableFile(atPath: path) {
+                return URL(fileURLWithPath: path)
+            }
+        }
+        
+        return nil
+    }
+    
+    static var isFFmpegAvailable: Bool {
+        return findFFmpegURL() != nil
+    }
+
     private func spawnProcess(index: Int, rtspUrl: String, onFrame: @escaping (NSImage) -> Void) {
         stopProcessOnly(index: index)
         
@@ -60,14 +100,16 @@ final class PipeStreamManager {
             return
         }
         
-        AppLogger.log("🚀 [PipeStreamManager \(index)] Spawning RTSP Pipe stream: \(rtspUrl)")
+        guard let ffmpegURL = PipeStreamManager.findFFmpegURL() else {
+            AppLogger.log("❌ [PipeStreamManager \(index)] FFmpeg not found on this Mac! Please install via 'brew install ffmpeg' to enable AI people counting.")
+            return
+        }
+        
+        AppLogger.log("🚀 [PipeStreamManager \(index)] Spawning RTSP Pipe stream via \(ffmpegURL.path): \(rtspUrl)")
         
         let pipe = Pipe()
         let process = Process()
-        process.executableURL = URL(fileURLWithPath: "/opt/homebrew/bin/ffmpeg")
-        if !FileManager.default.fileExists(atPath: "/opt/homebrew/bin/ffmpeg") {
-            process.executableURL = URL(fileURLWithPath: "/usr/local/bin/ffmpeg")
-        }
+        process.executableURL = ffmpegURL
         
         // Use -timeout 3000000 (3s TCP timeout) so disconnects are detected fast
         process.arguments = [

@@ -10,9 +10,13 @@ final class CoreMLYoloDetector {
     
     private init() {
         // 1. Load Head Model (yolov8n-head)
-        let headCandidatePaths = [
+        let headCandidatePaths: [URL?] = [
             Bundle.main.url(forResource: "yolov8n-head", withExtension: "mlmodelc"),
             Bundle.main.url(forResource: "yolov8n_head", withExtension: "mlmodelc"),
+            Bundle.main.resourceURL?.appendingPathComponent("yolov8n-head.mlmodelc"),
+            Bundle.main.resourceURL?.appendingPathComponent("yolov8n_head.mlmodelc"),
+            Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/yolov8n-head.mlmodelc"),
+            Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/yolov8n_head.mlmodelc"),
             URL(fileURLWithPath: "/Users/enoch/Desktop/HorizonPTZ.app/Contents/Resources/yolov8n-head.mlmodelc"),
             URL(fileURLWithPath: "/Users/enoch/Desktop/HorizonPTZ.app/Contents/Resources/yolov8n_head.mlmodelc"),
             URL(fileURLWithPath: "/Users/enoch/AndroidStudioProjects/HorizonPTZ/macos/HorizonPTZ/yolov8n-head.mlmodelc"),
@@ -32,8 +36,10 @@ final class CoreMLYoloDetector {
         }
         
         // 2. Load Body Model (yolov8n - COCO Person)
-        let bodyCandidatePaths = [
+        let bodyCandidatePaths: [URL?] = [
             Bundle.main.url(forResource: "yolov8n", withExtension: "mlmodelc"),
+            Bundle.main.resourceURL?.appendingPathComponent("yolov8n.mlmodelc"),
+            Bundle.main.bundleURL.appendingPathComponent("Contents/Resources/yolov8n.mlmodelc"),
             URL(fileURLWithPath: "/Users/enoch/Desktop/HorizonPTZ.app/Contents/Resources/yolov8n.mlmodelc"),
             URL(fileURLWithPath: "/Users/enoch/AndroidStudioProjects/HorizonPTZ/macos/HorizonPTZ/yolov8n.mlmodelc"),
             URL(fileURLWithPath: "/tmp/yolov8n.mlmodelc")

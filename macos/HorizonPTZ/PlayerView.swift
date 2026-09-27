@@ -245,6 +245,33 @@ struct PlayerView: View {
                 LiveAIBoundingBoxCanvas(trackedHumans: liveHumans, count: liveCount)
             }
             
+            // Missing FFmpeg Alert Badge Overlay
+            if isAiEnabled && !PipeStreamManager.isFFmpegAvailable {
+                VStack {
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .foregroundColor(.yellow)
+                            .font(.system(size: 13, weight: .bold))
+                        Text("未偵測到 FFmpeg：請開啟終端機執行 brew install ffmpeg 以啟用 AI 計算")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(.white)
+                    }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(Color.black.opacity(0.85))
+                    .cornerRadius(8)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 8)
+                            .stroke(Color.yellow.opacity(0.8), lineWidth: 1)
+                    )
+                    .shadow(radius: 4)
+                    .padding(.top, 12)
+                    
+                    Spacer()
+                }
+                .transition(.opacity)
+            }
+            
             // Reconnecting Alert Badge Overlay
             if viewModel.isReconnecting {
                 VStack {

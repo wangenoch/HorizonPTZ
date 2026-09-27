@@ -22,8 +22,11 @@ final class AppLogger {
     }
 }
 
-final class PipeStreamManager {
+final class PipeStreamManager: ObservableObject {
     static let shared = PipeStreamManager()
+    
+    @Published var isAvailable: Bool = false
+    @Published var ffmpegPath: String? = nil
     
     private struct StreamInfo {
         let rtspUrl: String
@@ -41,7 +44,25 @@ final class PipeStreamManager {
     private let lock = NSLock()
     
     private init() {
+        checkAvailability()
         startWatchdog()
+    }
+    
+    @discardableResult
+    func checkAvailability() -> Bool {
+        let url = PipeStreamManager.findFFmpegURL()
+        let available = (url != nil)
+        let path = url?.path
+        if Thread.isMainThread {
+            self.isAvailable = available
+            self.ffmpegPath = path
+        } else {
+            DispatchQueue.main.async {
+                self.isAvailable = available
+                self.ffmpegPath = path
+            }
+        }
+        return available
     }
     
     func startStream(index: Int, rtspUrl: String, onFrame: @escaping (NSImage) -> Void) {

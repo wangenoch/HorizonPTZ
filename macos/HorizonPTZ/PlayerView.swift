@@ -231,9 +231,11 @@ struct PlayerView: View {
     @Binding var isAiEnabled: Bool
     
     @StateObject private var viewModel = PlayerViewModel()
+    @ObservedObject private var streamManager = PipeStreamManager.shared
     @State private var liveHumans: [TrackedHuman] = []
     @State private var liveCount: Int = 0
     @State private var isAnalyzing = false
+    @State private var showInstallGuide = false
     
     var body: some View {
         ZStack {
@@ -246,19 +248,36 @@ struct PlayerView: View {
             }
             
             // Missing FFmpeg Alert Badge Overlay
-            if isAiEnabled && !PipeStreamManager.isFFmpegAvailable {
+            if isAiEnabled && !streamManager.isAvailable {
                 VStack {
-                    HStack(spacing: 6) {
+                    HStack(spacing: 8) {
                         Image(systemName: "exclamationmark.triangle.fill")
                             .foregroundColor(.yellow)
                             .font(.system(size: 13, weight: .bold))
-                        Text("未偵測到 FFmpeg：請開啟終端機執行 brew install ffmpeg 以啟用 AI 計算")
+                        
+                        Text("未偵測到 FFmpeg：AI 計算需要依賴組件")
                             .font(.system(size: 11, weight: .bold))
                             .foregroundColor(.white)
+                        
+                        Button {
+                            showInstallGuide = true
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: "arrow.down.circle.fill")
+                                Text("安裝與下載指引")
+                            }
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(.black)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(Color.yellow)
+                            .cornerRadius(5)
+                        }
+                        .buttonStyle(.plain)
                     }
                     .padding(.horizontal, 12)
                     .padding(.vertical, 6)
-                    .background(Color.black.opacity(0.85))
+                    .background(Color.black.opacity(0.88))
                     .cornerRadius(8)
                     .overlay(
                         RoundedRectangle(cornerRadius: 8)
@@ -270,6 +289,9 @@ struct PlayerView: View {
                     Spacer()
                 }
                 .transition(.opacity)
+                .sheet(isPresented: $showInstallGuide) {
+                    FFmpegInstallGuideView(isPresented: $showInstallGuide)
+                }
             }
             
             // Reconnecting Alert Badge Overlay

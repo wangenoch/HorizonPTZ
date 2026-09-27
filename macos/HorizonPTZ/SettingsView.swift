@@ -27,6 +27,8 @@ struct SettingsView: View {
     @State private var switcherLayoutMode: SwitcherLayoutMode
     @State private var youtubeChannelId: String
     @State private var youtubeStreamKey: String
+    @ObservedObject private var streamManager = PipeStreamManager.shared
+    @State private var showFFmpegGuide: Bool = false
     
     var onSave: () -> Void
     var onCancel: () -> Void
@@ -165,11 +167,64 @@ struct SettingsView: View {
             .background(Color(nsColor: .windowBackgroundColor))
         }
         .frame(width: 720, height: 580)
+        .sheet(isPresented: $showFFmpegGuide) {
+            FFmpegInstallGuideView(isPresented: $showFFmpegGuide)
+        }
     }
     
     private func aiEngineTab() -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
+                // Card 0: FFmpeg 依賴狀態與下載指引 (NEW)
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack {
+                        Image(systemName: streamManager.isAvailable ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
+                            .foregroundColor(streamManager.isAvailable ? .green : .orange)
+                        Text("AI 串流解碼引擎 (FFmpeg 依賴)")
+                            .font(.system(size: 13, weight: .bold))
+                            .foregroundColor(.primary)
+                        Spacer()
+                        
+                        Button {
+                            showFFmpegGuide = true
+                        } label: {
+                            HStack(spacing: 4) {
+                                Image(systemName: streamManager.isAvailable ? "gearshape" : "arrow.down.circle.fill")
+                                Text(streamManager.isAvailable ? "檢視依賴配置" : "安裝與下載指引")
+                            }
+                            .font(.system(size: 11, weight: streamManager.isAvailable ? .regular : .bold))
+                        }
+                        .buttonStyle(.bordered)
+                    }
+                    
+                    if streamManager.isAvailable {
+                        HStack(spacing: 6) {
+                            Text("🟢 狀態正常：")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(.green)
+                            Text("已成功載入執行檔 (\(streamManager.ffmpegPath ?? ""))")
+                                .font(.system(size: 11, design: .monospaced))
+                                .foregroundColor(.secondary)
+                        }
+                    } else {
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("🔴 尚未安裝：目前系統未偵測到 FFmpeg，AI 即時人數計算將無法取得影像串流。")
+                                .font(.system(size: 11, weight: .semibold))
+                                .foregroundColor(.orange)
+                            Text("請點擊右上角「安裝與下載指引」一鍵複製 Homebrew 指令或下載官方免安裝版。")
+                                .font(.system(size: 11))
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                }
+                .padding(14)
+                .background(streamManager.isAvailable ? Color.green.opacity(0.06) : Color.orange.opacity(0.08))
+                .cornerRadius(10)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 10)
+                        .stroke(streamManager.isAvailable ? Color.green.opacity(0.2) : Color.orange.opacity(0.3), lineWidth: 1)
+                )
+
                 // Card 1: Re-ID 人員特徵記憶重識別 (NEW)
                 VStack(alignment: .leading, spacing: 14) {
                     HStack {

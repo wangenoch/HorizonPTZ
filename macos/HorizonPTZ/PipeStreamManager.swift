@@ -24,23 +24,43 @@ final class AppLogger {
 
 final class PipeStreamManager {
     static let shared = PipeStreamManager()
+    
+    private struct StreamInfo {
+        let rtspUrl: String
+        let onFrame: (NSImage) -> Void
+        var lastFrameTime: Date
+        var isManualStop: Bool
+    }
+    
     private var processes: [Int: Process] = [:]
     private var pipes: [Int: Pipe] = [:]
     private var frameCounters: [Int: Int] = [:]
     private var buffers: [Int: Data] = [:]
+    private var streamInfos: [Int: StreamInfo] = [:]
+    private var watchdogTimer: Timer? = nil
     private let lock = NSLock()
     
-    private init() {}
+    private init() {
+        startWatchdog()
+    }
     
     func startStream(index: Int, rtspUrl: String, onFrame: @escaping (NSImage) -> Void) {
-        stopStream(index: index)
+        lock.lock()
+        streamInfos[index] = StreamInfo(rtspUrl: rtspUrl, onFrame: onFrame, lastFrameTime: Date(), isManualStop: false)
+        lock.unlock()
+        
+        spawnProcess(index: index, rtspUrl: rtspUrl, onFrame: onFrame)
+    }
+    
+    private func spawnProcess(index: Int, rtspUrl: String, onFrame: @escaping (NSImage) -> Void) {
+        stopProcessOnly(index: index)
         
         guard !rtspUrl.isEmpty else {
             AppLogger.log("⚠️ [PipeStreamManager \(index)] Empty RTSP URL, skipping stream start")
             return
         }
         
-        AppLogger.log("🚀 [PipeStreamManager \(index)] STARTING RTSP Pipe stream: \(rtspUrl)")
+        AppLogger.log("🚀 [PipeStreamManager \(index)] Spawning RTSP Pipe stream: \(rtspUrl)")
         
         let pipe = Pipe()
         let process = Process()
@@ -49,8 +69,10 @@ final class PipeStreamManager {
             process.executableURL = URL(fileURLWithPath: "/usr/local/bin/ffmpeg")
         }
         
+        // Use -timeout 3000000 (3s TCP timeout) so disconnects are detected fast
         process.arguments = [
             "-loglevel", "quiet",
+            "-timeout", "3000000",
             "-rtsp_transport", "tcp",
             "-i", rtspUrl,
             "-vf", "fps=10,scale=640:-1",
@@ -99,6 +121,8 @@ final class PipeStreamManager {
                 if let image = NSImage(data: jpegData) {
                     self.frameCounters[index, default: 0] += 1
                     let count = self.frameCounters[index, default: 0]
+                    self.streamInfos[index]?.lastFrameTime = Date()
+                    
                     if count % 30 == 0 {
                         AppLogger.log("📸 [PipeStreamManager \(index)] Frame #\(count) extracted in RAM!")
                     }
@@ -119,6 +143,27 @@ final class PipeStreamManager {
             }
         }
         
+        process.terminationHandler = { [weak self] proc in
+            guard let self = self else { return }
+            self.lock.lock()
+            let isManual = self.streamInfos[index]?.isManualStop ?? true
+            self.lock.unlock()
+            
+            if !isManual {
+                AppLogger.log("⚠️ [PipeStreamManager \(index)] FFmpeg process exited (code \(proc.terminationStatus)). Auto-reconnecting in 2s...")
+                DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+                    guard let self = self else { return }
+                    self.lock.lock()
+                    guard let info = self.streamInfos[index], !info.isManualStop else {
+                        self.lock.unlock()
+                        return
+                    }
+                    self.lock.unlock()
+                    self.spawnProcess(index: index, rtspUrl: info.rtspUrl, onFrame: info.onFrame)
+                }
+            }
+        }
+        
         do {
             try process.run()
             AppLogger.log("✅ [PipeStreamManager \(index)] FFmpeg Pipe PID: \(process.processIdentifier)")
@@ -127,7 +172,7 @@ final class PipeStreamManager {
         }
     }
     
-    func stopStream(index: Int) {
+    private func stopProcessOnly(index: Int) {
         lock.lock()
         let pipe = pipes.removeValue(forKey: index)
         let proc = processes.removeValue(forKey: index)
@@ -139,14 +184,57 @@ final class PipeStreamManager {
             pipe.fileHandleForReading.readabilityHandler = nil
         }
         if let proc = proc {
+            proc.terminationHandler = nil
             AppLogger.log("🛑 [PipeStreamManager \(index)] STOPPING Stream PID: \(proc.processIdentifier)")
             proc.terminate()
         }
+    }
+    
+    func stopStream(index: Int) {
+        lock.lock()
+        streamInfos[index]?.isManualStop = true
+        streamInfos.removeValue(forKey: index)
+        lock.unlock()
+        
+        stopProcessOnly(index: index)
     }
     
     func getFrameCount(index: Int) -> Int {
         lock.lock()
         defer { lock.unlock() }
         return frameCounters[index, default: 0]
+    }
+    
+    // MARK: - Auto-Healing Watchdog
+    private func startWatchdog() {
+        DispatchQueue.main.async { [weak self] in
+            self?.watchdogTimer?.invalidate()
+            self?.watchdogTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
+                self?.checkAndHealStreams()
+            }
+        }
+    }
+    
+    private func checkAndHealStreams() {
+        lock.lock()
+        let activeIndices = Array(streamInfos.keys)
+        var streamsToRestart: [(Int, String, (NSImage) -> Void)] = []
+        
+        for idx in activeIndices {
+            guard let info = streamInfos[idx], !info.isManualStop, !info.rtspUrl.isEmpty else { continue }
+            let isRunning = processes[idx]?.isRunning ?? false
+            let idleTime = Date().timeIntervalSince(info.lastFrameTime)
+            
+            // If process exited or no frames received for > 5.0 seconds
+            if !isRunning || idleTime > 5.0 {
+                AppLogger.log("🩺 [PipeStreamManager Watchdog \(idx)] Inactive AI stream detected (running=\(isRunning), idle=\(String(format: "%.1f", idleTime))s). Auto-healing...")
+                streamsToRestart.append((idx, info.rtspUrl, info.onFrame))
+            }
+        }
+        lock.unlock()
+        
+        for (idx, url, onFrame) in streamsToRestart {
+            spawnProcess(index: idx, rtspUrl: url, onFrame: onFrame)
+        }
     }
 }

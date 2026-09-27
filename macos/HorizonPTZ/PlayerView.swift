@@ -2,40 +2,170 @@ import SwiftUI
 import VLCKit
 import Vision
 
-class PlayerViewModel: ObservableObject {
+final class PlayerViewModel: NSObject, ObservableObject, VLCMediaPlayerDelegate {
     let mediaPlayer = VLCMediaPlayer()
+    var rtspUrl: String = ""
+    var cameraIndex: Int = 1
+    
+    @Published var isReconnecting: Bool = false
+    private var lastActiveTime: Date = Date()
+    private var watchdogTimer: Timer? = nil
+    private var isManualStop: Bool = false
+    
+    override init() {
+        super.init()
+        mediaPlayer.delegate = self
+    }
     
     deinit {
+        stop()
+    }
+    
+    func start(rtspUrl: String, cameraIndex: Int) {
+        self.rtspUrl = rtspUrl
+        self.cameraIndex = cameraIndex
+        self.isManualStop = false
+        self.lastActiveTime = Date()
+        
+        loadAndPlay(url: rtspUrl)
+        startWatchdog()
+    }
+    
+    func updateUrl(newUrl: String) {
+        guard newUrl != rtspUrl else { return }
+        self.rtspUrl = newUrl
+        loadAndPlay(url: newUrl)
+    }
+    
+    func stop() {
+        isManualStop = true
+        watchdogTimer?.invalidate()
+        watchdogTimer = nil
+        mediaPlayer.delegate = nil
         mediaPlayer.drawable = nil
         mediaPlayer.stop()
+    }
+    
+    private func loadAndPlay(url: String) {
+        guard !url.isEmpty, let targetUrl = URL(string: url) else { return }
+        AppLogger.log("🎥 [PlayerViewModel \(cameraIndex)] Loading RTSP URL: \(url)")
+        let media = VLCMedia(url: targetUrl)
+        // Optimized RTSP network caching (300ms) for real-time responsiveness & TCP transport
+        media.addOptions([
+            "network-caching": 300,
+            "rtsp-tcp": ""
+        ])
+        mediaPlayer.media = media
+        mediaPlayer.play()
+    }
+    
+    private var isConnectingAttempt: Bool = false
+    
+    func reconnect() {
+        guard !isManualStop, !rtspUrl.isEmpty, !isConnectingAttempt else { return }
+        isConnectingAttempt = true
+        lastActiveTime = Date()
+        
+        DispatchQueue.main.async {
+            self.isReconnecting = true
+        }
+        AppLogger.log("🔄 [PlayerViewModel \(cameraIndex)] Auto-reconnecting RTSP stream: \(rtspUrl)")
+        mediaPlayer.stop()
+        
+        DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { [weak self] in
+            guard let self = self, !self.isManualStop else { return }
+            self.loadAndPlay(url: self.rtspUrl)
+            self.isConnectingAttempt = false
+        }
+    }
+    
+    // MARK: - VLCMediaPlayerDelegate
+    func mediaPlayerStateChanged(_ aNotification: Notification) {
+        let state = mediaPlayer.state
+        AppLogger.log("📺 [VLC State \(cameraIndex)] State changed: \(state.rawValue)")
+        
+        DispatchQueue.main.async {
+            switch state {
+            case .playing:
+                self.isConnectingAttempt = false
+                self.isReconnecting = false
+                self.lastActiveTime = Date()
+            case .opening, .buffering:
+                self.lastActiveTime = Date()
+            case .error, .ended, .stopped:
+                if !self.isManualStop && !self.isConnectingAttempt {
+                    self.isReconnecting = true
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 2.0) { [weak self] in
+                        guard let self = self, !self.isManualStop else { return }
+                        let s = self.mediaPlayer.state
+                        if !self.mediaPlayer.isPlaying && s != .opening && s != .buffering {
+                            self.reconnect()
+                        }
+                    }
+                }
+            default:
+                break
+            }
+        }
+    }
+    
+    func mediaPlayerTimeChanged(_ aNotification: Notification) {
+        lastActiveTime = Date()
+        isConnectingAttempt = false
+        if isReconnecting {
+            DispatchQueue.main.async {
+                self.isReconnecting = false
+            }
+        }
+    }
+    
+    private func startWatchdog() {
+        watchdogTimer?.invalidate()
+        watchdogTimer = Timer.scheduledTimer(withTimeInterval: 3.0, repeats: true) { [weak self] _ in
+            guard let self = self, !self.isManualStop, !self.rtspUrl.isEmpty else { return }
+            
+            let isPlaying = self.mediaPlayer.isPlaying
+            let state = self.mediaPlayer.state
+            let idleTime = Date().timeIntervalSince(self.lastActiveTime)
+            
+            // Allow up to 8s during initial opening / buffering
+            if state == .opening || state == .buffering {
+                if idleTime > 8.0 {
+                    AppLogger.log("🩺 [PlayerViewModel Watchdog \(self.cameraIndex)] Stuck in opening/buffering >8s. Auto-reconnecting...")
+                    self.reconnect()
+                }
+                return
+            }
+            
+            // Reconnect if not playing (error/stopped/ended) OR stream frozen for > 5.0s
+            if !isPlaying || state == .error || state == .stopped || state == .ended || idleTime > 5.0 {
+                AppLogger.log("🩺 [PlayerViewModel Watchdog \(self.cameraIndex)] Disconnect or freeze detected (playing=\(isPlaying), state=\(state.rawValue), idle=\(String(format: "%.1f", idleTime))s). Auto-reconnecting...")
+                self.reconnect()
+            }
+        }
     }
 }
 
 struct VLCVideoPlayer: NSViewRepresentable {
     let rtspUrl: String
-    let mediaPlayer: VLCMediaPlayer
+    let viewModel: PlayerViewModel
+    let cameraIndex: Int
 
     func makeNSView(context: Context) -> NSView {
         let view = NSView()
         view.wantsLayer = true
         view.layer?.backgroundColor = NSColor.black.cgColor
 
-        mediaPlayer.drawable = view
-
-        if !rtspUrl.isEmpty {
-            AppLogger.log("🎥 [VLCVideoPlayer] Loading RTSP URL: \(rtspUrl)")
-            mediaPlayer.media = VLCMedia(url: URL(string: rtspUrl)!)
-            mediaPlayer.play()
-        }
+        viewModel.mediaPlayer.drawable = view
+        viewModel.start(rtspUrl: rtspUrl, cameraIndex: cameraIndex)
         return view
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
-        if mediaPlayer.media?.url?.absoluteString != rtspUrl, !rtspUrl.isEmpty {
-            AppLogger.log("🎥 [VLCVideoPlayer] Updating RTSP URL to: \(rtspUrl)")
-            mediaPlayer.media = VLCMedia(url: URL(string: rtspUrl)!)
-            mediaPlayer.play()
+        if viewModel.mediaPlayer.drawable == nil {
+            viewModel.mediaPlayer.drawable = nsView
         }
+        viewModel.updateUrl(newUrl: rtspUrl)
     }
 }
 
@@ -104,55 +234,61 @@ struct PlayerView: View {
     @State private var liveHumans: [TrackedHuman] = []
     @State private var liveCount: Int = 0
     @State private var isAnalyzing = false
-    @State private var startupTimer: Timer? = nil
     
     var body: some View {
         ZStack {
             // Live Playing RTSP Video Stream
-            VLCVideoPlayer(rtspUrl: rtspUrl, mediaPlayer: viewModel.mediaPlayer)
+            VLCVideoPlayer(rtspUrl: rtspUrl, viewModel: viewModel, cameraIndex: index)
             
             // Transparent SwiftUI Canvas Overlay
             if isAiEnabled {
                 LiveAIBoundingBoxCanvas(trackedHumans: liveHumans, count: liveCount)
             }
+            
+            // Reconnecting Alert Badge Overlay
+            if viewModel.isReconnecting {
+                VStack {
+                    HStack(spacing: 6) {
+                        ProgressView()
+                            .controlSize(.small)
+                        Text("訊號中斷，自動重連中...")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(.white)
+                    }
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(Color.red.opacity(0.88))
+                    .cornerRadius(8)
+                    .shadow(radius: 4)
+                    .padding(.top, 12)
+                    
+                    Spacer()
+                }
+                .transition(.opacity)
+            }
         }
         .onAppear {
             AppLogger.log("👁️ [PlayerView \(index)] onAppear. isAiEnabled=\(isAiEnabled)")
-            startAiWithWatchdog()
+            updateAiStream()
         }
         .onDisappear {
             AppLogger.log("👁️ [PlayerView \(index)] onDisappear.")
+            viewModel.stop()
             stopAiStream()
-            startupTimer?.invalidate()
         }
         .onChange(of: isAiEnabled) { newValue in
             AppLogger.log("🔄 [PlayerView \(index)] isAiEnabled changed to \(newValue)")
             if newValue {
-                startAiWithWatchdog()
+                updateAiStream()
             } else {
                 stopAiStream()
             }
         }
         .onChange(of: rtspUrl) { newUrl in
             AppLogger.log("🔄 [PlayerView \(index)] RTSP URL changed to: \(newUrl)")
+            viewModel.updateUrl(newUrl: newUrl)
             if isAiEnabled {
-                startAiWithWatchdog()
-            }
-        }
-    }
-    
-    private func startAiWithWatchdog() {
-        updateAiStream()
-        
-        // Startup Watchdog: If after 1.5 seconds no frames have been processed, auto-heal and restart AI stream!
-        startupTimer?.invalidate()
-        startupTimer = Timer.scheduledTimer(withTimeInterval: 1.5, repeats: false) { _ in
-            if self.isAiEnabled {
-                let frames = PipeStreamManager.shared.getFrameCount(index: self.index)
-                if frames == 0 {
-                    AppLogger.log("🩺 [PlayerView Watchdog \(index)] No frames received after 1.5s startup, auto-healing AI stream!")
-                    self.updateAiStream()
-                }
+                updateAiStream()
             }
         }
     }
@@ -167,7 +303,6 @@ struct PlayerView: View {
                     if self.isAiEnabled {
                         self.liveHumans = result.trackedHumans
                         self.liveCount = result.count
-                        AppLogger.log("🎯 [PlayerView \(self.index)] AI Detection Count = \(result.count) | Tracked IDs: \(result.trackedHumans.map { $0.id })")
                     }
                     self.isAnalyzing = false
                 }

@@ -143,14 +143,16 @@ struct MainView: View {
                 }
             }
             .padding(10)
+            .background(Color(nsColor: .windowBackgroundColor))
             Divider()
             
-            topSectionView
-            
-            Divider()
-            
-            bottomSectionView
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            VSplitView {
+                topSectionView
+                    .frame(minHeight: 180, idealHeight: 280, maxHeight: .infinity)
+                
+                bottomSectionView
+                    .frame(minHeight: 160, maxHeight: .infinity)
+            }
         }
         .onAppear {
             initializeClients()
@@ -263,6 +265,7 @@ struct MainView: View {
             .padding(.horizontal, 12)
             .padding(.top, 8)
             .padding(.bottom, 6)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         default:
             HStack(spacing: 12) {
                 tabbedPanel(index: 1, selection: $leftTabSelection, config: cam1Config, client: viscaClient1)
@@ -271,6 +274,7 @@ struct MainView: View {
             .padding(.horizontal, 12)
             .padding(.top, 8)
             .padding(.bottom, 6)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
     
@@ -405,6 +409,7 @@ struct MainView: View {
                 }
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     
     private func cameraContent(index: Int, config: CameraConfig, client: ViscaClient?) -> some View {
@@ -450,6 +455,7 @@ struct MainView: View {
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
                 }
             }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
             
             // Camera control bar
             HStack(spacing: 12) {
@@ -532,6 +538,7 @@ struct MainView: View {
             }
             .padding(.horizontal, 4)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
     
     private func handleVirtualJoystickUpdate(index: Int, client: ViscaClient?, x: CGFloat, y: CGFloat) {

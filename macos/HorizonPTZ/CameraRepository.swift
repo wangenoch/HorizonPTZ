@@ -123,6 +123,21 @@ class CameraRepository {
         setExpoStrength(settings.expoStrength)
         setVirtualJoystickEnabled(settings.virtualJoystickEnabled)
     }
+    
+    // MARK: - AI Settings Persistence
+    func getAiSettings() -> AiSettings {
+        if let data = defaults.data(forKey: "ai_settings"),
+           let settings = try? JSONDecoder().decode(AiSettings.self, from: data) {
+            return settings
+        }
+        return AiSettings()
+    }
+    
+    func saveAiSettings(_ settings: AiSettings) {
+        if let encoded = try? JSONEncoder().encode(settings) {
+            defaults.set(encoded, forKey: "ai_settings")
+        }
+    }
 }
 
 enum SwitcherLayoutMode: String, CaseIterable, Identifiable, Codable {

@@ -303,10 +303,21 @@ final class CoreMLYoloDetector {
     }
 }
 
-enum AiEngineMode: String, CaseIterable, Identifiable {
+enum AiEngineMode: String, CaseIterable, Identifiable, Codable {
     case appleVision = "Apple Vision (原生 360°)"
     case coreMLYolo = "CoreML YOLO (深度學習 NPU)"
     var id: String { rawValue }
+}
+
+struct AiSettings: Codable, Equatable {
+    var engineMode: AiEngineMode = .coreMLYolo
+    var confidenceThreshold: Float = 0.15
+    var minObjectSize: Float = 0.001
+    var samplingFps: Int = 10
+    var trackingAlpha: Float = 0.85
+    var maxMotionDistance: Float = 0.15
+    var isReIdEnabled: Bool = true
+    var reIdSimilarity: Float = 0.80
 }
 
 struct TrackedHuman {
@@ -437,6 +448,36 @@ class PeopleCounterService: ObservableObject {
     
     @Published var isReIdEnabled: Bool = true
     @Published var reIdSimilarity: Float = 0.80
+    
+    private init() {
+        loadSettings()
+    }
+    
+    func loadSettings() {
+        let s = CameraRepository.shared.getAiSettings()
+        self.currentEngineMode = s.engineMode
+        self.confidenceThreshold = s.confidenceThreshold
+        self.minObjectSize = s.minObjectSize
+        self.samplingFps = s.samplingFps
+        self.trackingAlpha = s.trackingAlpha
+        self.maxMotionDistance = s.maxMotionDistance
+        self.isReIdEnabled = s.isReIdEnabled
+        self.reIdSimilarity = s.reIdSimilarity
+    }
+    
+    func saveCurrentSettings() {
+        let s = AiSettings(
+            engineMode: self.currentEngineMode,
+            confidenceThreshold: self.confidenceThreshold,
+            minObjectSize: self.minObjectSize,
+            samplingFps: self.samplingFps,
+            trackingAlpha: self.trackingAlpha,
+            maxMotionDistance: self.maxMotionDistance,
+            isReIdEnabled: self.isReIdEnabled,
+            reIdSimilarity: self.reIdSimilarity
+        )
+        CameraRepository.shared.saveAiSettings(s)
+    }
     
     private var tracker1 = PersonTracker()
     private var tracker2 = PersonTracker()

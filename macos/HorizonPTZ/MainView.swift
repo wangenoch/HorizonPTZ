@@ -117,6 +117,9 @@ struct MainView: View {
                         .font(.system(size: 11, weight: .semibold))
                         .frame(width: 175)
                         .help("選擇 AI 人數識別處理引擎 (Apple Vision 360° 或 CoreML YOLO 深度學習)")
+                        .onChange(of: counterService.currentEngineMode) { _ in
+                            counterService.saveCurrentSettings()
+                        }
                         
                         Button(action: {
                             isAiLiveEnabled.toggle()

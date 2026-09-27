@@ -140,6 +140,7 @@ struct SettingsView: View {
                     counter.maxMotionDistance = distVal
                     counter.isReIdEnabled = isReIdOn
                     counter.reIdSimilarity = reIdSimVal
+                    counter.saveCurrentSettings()
                     
                     cam1Config = localCam1
                     cam2Config = localCam2

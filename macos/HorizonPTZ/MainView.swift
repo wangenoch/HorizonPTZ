@@ -28,6 +28,10 @@ struct MainView: View {
     @State private var switcherIp = CameraRepository.shared.getSwitcherIp()
     @State private var youtubeUrl = CameraRepository.shared.getYoutubeUrl()
     
+    @State private var switcherLayoutMode: SwitcherLayoutMode = CameraRepository.shared.getSwitcherLayoutMode()
+    @ObservedObject private var floatingWindowController = FloatingSwitcherWindowController.shared
+    @State private var bottomSectionTab: Int = 0 // 0: Switcher, 1: YouTube Studio (for bottomConsole)
+    
     var body: some View {
         VStack(spacing: 0) {
             // Top Bar
@@ -45,14 +49,45 @@ struct MainView: View {
                     Spacer()
                 }
                 
-                // Centered toggle button
-                Button(action: {
-                    toggleBothPanels()
-                }) {
-                    Label("一鍵切換雙視窗 (相機/網頁)", systemImage: "arrow.left.and.right.righttriangle.left.and.righttriangle.right")
+                // Centered toggle button and layout selector
+                HStack(spacing: 8) {
+                    Button(action: {
+                        toggleBothPanels()
+                    }) {
+                        Label("切換雙視窗", systemImage: "arrow.left.and.right.righttriangle.left.and.righttriangle.right")
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    
+                    // Switcher Layout Selector
+                    Picker("", selection: $switcherLayoutMode) {
+                        ForEach(SwitcherLayoutMode.allCases) { mode in
+                            Label(mode.rawValue, systemImage: mode.iconName).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .font(.system(size: 11, weight: .semibold))
+                    .frame(width: 145)
+                    .help("切換導播機排版模式 (底部主控台 / 右側導播欄 / 獨立懸浮窗 / 單槽子母預覽)")
+                    .onChange(of: switcherLayoutMode) { newMode in
+                        CameraRepository.shared.setSwitcherLayoutMode(newMode)
+                        if newMode == .floatingWindow {
+                            FloatingSwitcherWindowController.shared.showWindow()
+                        }
+                    }
+                    
+                    if switcherLayoutMode == .floatingWindow {
+                        Button(action: {
+                            FloatingSwitcherWindowController.shared.toggleWindow()
+                        }) {
+                            Label(floatingWindowController.isVisible ? "導播窗" : "開啟導播窗", systemImage: "macwindow.on.rectangle")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundColor(floatingWindowController.isVisible ? .accentColor : .secondary)
+                        }
+                        .buttonStyle(.bordered)
+                        .controlSize(.small)
+                    }
                 }
-                .buttonStyle(.bordered)
-                .controlSize(.small)
                 
                 // Right-aligned settings and controls
                 HStack {
@@ -110,19 +145,11 @@ struct MainView: View {
             Divider()
             
             VSplitView {
-                HStack(spacing: 12) {
-                    // Left Tabbed Column (CAM 1 / Browser 1)
-                    tabbedPanel(index: 1, selection: $leftTabSelection, config: cam1Config, client: viscaClient1)
-                    
-                    // Right Tabbed Column (CAM 2 / Browser 2)
-                    tabbedPanel(index: 2, selection: $rightTabSelection, config: cam2Config, client: viscaClient2)
-                }
-                .padding(12)
-                .frame(minHeight: 280, idealHeight: 360, maxHeight: 520)
+                topSectionView
+                    .frame(minHeight: 280, idealHeight: 360, maxHeight: 520)
                 
-                // Native YouTube Studio Dashboard Component
-                YouTubeStudioDashboardView()
-                    .frame(minHeight: 220, maxHeight: .infinity)
+                bottomSectionView
+                    .frame(minHeight: 200, maxHeight: .infinity)
             }
         }
         .onAppear {
@@ -148,6 +175,7 @@ struct MainView: View {
                     initializeClients()
                     switcherIp = CameraRepository.shared.getSwitcherIp()
                     youtubeUrl = CameraRepository.shared.getYoutubeUrl()
+                    switcherLayoutMode = CameraRepository.shared.getSwitcherLayoutMode()
                 },
                 onCancel: {
                     showSettings = false
@@ -219,6 +247,67 @@ struct MainView: View {
             if activeJoystickControl == 2 || activeJoystickControl == 3 {
                 viscaClient2?.sendZoomCommand(mode: mode, speed: speed)
             }
+        }
+    }
+    
+    @ViewBuilder
+    private var topSectionView: some View {
+        switch switcherLayoutMode {
+        case .rightSidebar:
+            HStack(spacing: 12) {
+                tabbedPanel(index: 1, selection: $leftTabSelection, config: cam1Config, client: viscaClient1)
+                tabbedPanel(index: 2, selection: $rightTabSelection, config: cam2Config, client: viscaClient2)
+                SwitcherControlView(layoutStyle: .rightSidebar, isAiLiveEnabled: $isAiLiveEnabled)
+                    .frame(width: 235)
+            }
+            .padding(12)
+        default:
+            HStack(spacing: 12) {
+                tabbedPanel(index: 1, selection: $leftTabSelection, config: cam1Config, client: viscaClient1)
+                tabbedPanel(index: 2, selection: $rightTabSelection, config: cam2Config, client: viscaClient2)
+            }
+            .padding(12)
+        }
+    }
+    
+    @ViewBuilder
+    private var bottomSectionView: some View {
+        switch switcherLayoutMode {
+        case .bottomConsole:
+            VStack(spacing: 0) {
+                HStack(spacing: 12) {
+                    Picker("", selection: $bottomSectionTab) {
+                        Label("🎛️ 導播機控制台", systemImage: "slider.horizontal.below.rectangle").tag(0)
+                        Label("📺 YouTube 直播主控台", systemImage: "play.rectangle").tag(1)
+                    }
+                    .pickerStyle(.segmented)
+                    .frame(width: 280)
+                    
+                    Spacer()
+                    
+                    if bottomSectionTab == 0 {
+                        Text("💡 廣播級寬幅控制台：支援 PGM/PST 獨立雙母線、轉場特效與 PIP 子母畫面")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 6)
+                .background(Color(nsColor: .windowBackgroundColor))
+                
+                Divider()
+                
+                if bottomSectionTab == 0 {
+                    SwitcherControlView(layoutStyle: .bottomConsole, isAiLiveEnabled: $isAiLiveEnabled)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                } else {
+                    YouTubeStudioDashboardView()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+        default:
+            YouTubeStudioDashboardView()
+                .frame(minHeight: 220, maxHeight: .infinity)
         }
     }
     
@@ -294,13 +383,22 @@ struct MainView: View {
                             .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
                     )
             } else {
-                SwitcherControlView()
-                    .aspectRatio(16/9, contentMode: .fit)
-                    .cornerRadius(8)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
-                    )
+                if switcherLayoutMode == .embeddedSlot {
+                    SwitcherControlView(layoutStyle: .embedded(cameraIndex: index), isAiLiveEnabled: $isAiLiveEnabled)
+                        .cornerRadius(8)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+                        )
+                } else {
+                    SwitcherControlView(layoutStyle: .standard, isAiLiveEnabled: $isAiLiveEnabled)
+                        .aspectRatio(16/9, contentMode: .fit)
+                        .cornerRadius(8)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(Color.secondary.opacity(0.2), lineWidth: 1)
+                        )
+                }
             }
         }
     }

@@ -17,3 +17,4 @@ macos/HorizonPTZ/HorizonPTZ
 macos/HorizonPTZ/HorizonPTZ_*
 macos/test_*
 macos/benchmark_*
+*.pt

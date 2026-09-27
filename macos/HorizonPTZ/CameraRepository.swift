@@ -82,4 +82,34 @@ class CameraRepository {
             return "https://studio.youtube.com/channel/\(channelId)"
         }
     }
+    
+    func getSwitcherLayoutMode() -> SwitcherLayoutMode {
+        if let raw = defaults.string(forKey: "switcher_layout_mode"),
+           let mode = SwitcherLayoutMode(rawValue: raw) {
+            return mode
+        }
+        return .bottomConsole
+    }
+    
+    func setSwitcherLayoutMode(_ mode: SwitcherLayoutMode) {
+        defaults.set(mode.rawValue, forKey: "switcher_layout_mode")
+    }
+}
+
+enum SwitcherLayoutMode: String, CaseIterable, Identifiable {
+    case bottomConsole = "底部廣播控制台"
+    case rightSidebar = "右側直立導播欄"
+    case floatingWindow = "獨立懸浮導播窗"
+    case embeddedSlot = "單槽子母預覽"
+    
+    var id: String { rawValue }
+    
+    var iconName: String {
+        switch self {
+        case .bottomConsole: return "rectangle.bottomthird.inset.filled"
+        case .rightSidebar: return "sidebar.right"
+        case .floatingWindow: return "macwindow.on.rectangle"
+        case .embeddedSlot: return "rectangle.on.rectangle"
+        }
+    }
 }

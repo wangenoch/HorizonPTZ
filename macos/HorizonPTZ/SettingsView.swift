@@ -24,6 +24,7 @@ struct SettingsView: View {
     
     @State private var expoStrength: Float
     @State private var switcherIp: String
+    @State private var switcherLayoutMode: SwitcherLayoutMode
     @State private var youtubeChannelId: String
     @State private var youtubeStreamKey: String
     
@@ -55,6 +56,7 @@ struct SettingsView: View {
         
         self._expoStrength = State(initialValue: CameraRepository.shared.getExpoStrength())
         self._switcherIp = State(initialValue: CameraRepository.shared.getSwitcherIp())
+        self._switcherLayoutMode = State(initialValue: CameraRepository.shared.getSwitcherLayoutMode())
         self._youtubeChannelId = State(initialValue: CameraRepository.shared.getYoutubeChannelId())
         self._youtubeStreamKey = State(initialValue: CameraRepository.shared.getYoutubeStreamKey())
         self.onSave = onSave
@@ -145,6 +147,7 @@ struct SettingsView: View {
                     CameraRepository.shared.saveConfig(index: 2, config: localCam2)
                     CameraRepository.shared.setExpoStrength(expoStrength)
                     CameraRepository.shared.setSwitcherIp(switcherIp)
+                    CameraRepository.shared.setSwitcherLayoutMode(switcherLayoutMode)
                     CameraRepository.shared.setYoutubeChannelId(youtubeChannelId)
                     CameraRepository.shared.setYoutubeStreamKey(youtubeStreamKey)
                     onSave()
@@ -636,8 +639,48 @@ struct SettingsView: View {
     
     private func switcherTab() -> some View {
         VStack(alignment: .leading, spacing: 16) {
+            // Section 1: 導播排版模式偏好
             VStack(alignment: .leading, spacing: 12) {
-                Text("導播切換機 Web 後台設定")
+                Text("導播排版顯示模式 (Switcher Layout)")
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundColor(.secondary)
+                
+                HStack(alignment: .top, spacing: 12) {
+                    Text("預設排版模式:")
+                        .font(.system(size: 12))
+                        .frame(width: 120, alignment: .trailing)
+                    
+                    VStack(alignment: .leading, spacing: 8) {
+                        Picker("", selection: $switcherLayoutMode) {
+                            ForEach(SwitcherLayoutMode.allCases) { mode in
+                                Text(mode.rawValue).tag(mode)
+                            }
+                        }
+                        .pickerStyle(.radioGroup)
+                        
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text("• 底部廣播控制台：雙機全幅置頂，下方展開完整雙母線廣播控制台 (推薦)")
+                            Text("• 右側直立導播欄：上方三欄佈局 (CAM 1 + CAM 2 + 直立導播控制欄)")
+                            Text("• 獨立懸浮導播窗：雙機畫面不受干擾，導播面板以獨立浮動視窗彈出 (支援雙螢幕)")
+                            Text("• 單槽子母預覽：保留原插槽切換，導播控制面板頂部自動嵌入即時 16:9 相機畫面")
+                        }
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                        .padding(.top, 4)
+                    }
+                }
+            }
+            .padding(14)
+            .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
+            .cornerRadius(8)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8)
+                    .stroke(Color.secondary.opacity(0.15), lineWidth: 1)
+            )
+            
+            // Section 2: 導播機 IP 設定
+            VStack(alignment: .leading, spacing: 12) {
+                Text("導播切換機連線設定")
                     .font(.system(size: 12, weight: .bold))
                     .foregroundColor(.secondary)
                 
@@ -645,11 +688,12 @@ struct SettingsView: View {
                     Text("導播機 IP 位址:")
                         .font(.system(size: 12))
                         .frame(width: 120, alignment: .trailing)
-                    TextField("例如：192.168.5.100", text: $switcherIp)
+                    TextField("例如：192.168.5.99", text: $switcherIp)
                         .textFieldStyle(.roundedBorder)
+                        .frame(width: 180)
                 }
                 
-                Text("💡 提示：支援 RGBLink Mini Edge 或其它具備網頁主控台的導播切換器。設定完成後，可在主畫面直接開啟導播控制面板。")
+                Text("💡 提示：支援 RGBLink Mini Edge / Mini Pro 或具備 Open API / Web 控制的導播切換器。主畫面與浮動視窗均可一鍵連線。")
                     .font(.system(size: 11))
                     .foregroundColor(.secondary)
                     .padding(.top, 4)

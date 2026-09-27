@@ -96,129 +96,45 @@ struct SwitcherControlView: View {
             HStack(alignment: .top, spacing: 16) {
                 // Left: Program & Preview Busses
                 VStack(spacing: 8) {
-                    // PGM Bus
-                    HStack(spacing: 10) {
-                        HStack(spacing: 4) {
-                            Circle().fill(Color.red).frame(width: 8, height: 8)
-                            Text("PROGRAM")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(.red)
-                        }
-                        .frame(width: 90, alignment: .leading)
-                        
-                        ForEach(0..<4, id: \.self) { i in
-                            Button(action: { client.setPgmSource(i) }) {
-                                Text(sources[i])
-                                    .font(.system(size: 12, weight: .bold))
-                                    .frame(maxWidth: .infinity, minHeight: 34)
-                            }
-                            .buttonStyle(BusButtonStyle(isActive: client.pgmSource == i, activeColor: .red))
-                        }
-                    }
-                    
-                    // PST Bus
-                    HStack(spacing: 10) {
-                        HStack(spacing: 4) {
-                            Circle().fill(Color.green).frame(width: 8, height: 8)
-                            Text("PREVIEW")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(.green)
-                        }
-                        .frame(width: 90, alignment: .leading)
-                        
-                        ForEach(0..<4, id: \.self) { i in
-                            Button(action: { client.setPstSource(i) }) {
-                                Text(sources[i])
-                                    .font(.system(size: 12, weight: .bold))
-                                    .frame(maxWidth: .infinity, minHeight: 34)
-                            }
-                            .buttonStyle(BusButtonStyle(isActive: client.pstSource == i, activeColor: .green))
-                        }
-                    }
+                    SwitcherBusRow(
+                        title: "PROGRAM",
+                        color: .red,
+                        sources: sources,
+                        activeSource: client.pgmSource,
+                        titleWidth: 85,
+                        onSelect: { client.setPgmSource($0) }
+                    )
+                    SwitcherBusRow(
+                        title: "PREVIEW",
+                        color: .green,
+                        sources: sources,
+                        activeSource: client.pstSource,
+                        titleWidth: 85,
+                        onSelect: { client.setPstSource($0) }
+                    )
                 }
                 .frame(maxWidth: .infinity)
                 
                 Divider()
                 
                 // Middle: Transition
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("轉場控制 (Transition)")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(.secondary)
-                    
-                    HStack(spacing: 8) {
-                        Button(action: { client.sendCut() }) {
-                            Text("CUT")
-                                .font(.system(size: 12, weight: .black))
-                                .frame(maxWidth: .infinity, minHeight: 32)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.red)
-                        
-                        Button(action: { client.sendAuto() }) {
-                            Text("AUTO")
-                                .font(.system(size: 12, weight: .black))
-                                .frame(maxWidth: .infinity, minHeight: 32)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.green)
-                    }
-                    
-                    Menu {
-                        ForEach(0..<effects.count, id: \.self) { idx in
-                            Button(effects[idx]) {
-                                client.setTransitionEffect(idx)
-                            }
-                        }
-                    } label: {
-                        HStack {
-                            Text("特效: \(effects[client.switchEffect < effects.count ? client.switchEffect : 0])")
-                                .font(.system(size: 11))
-                            Spacer()
-                            Image(systemName: "chevron.up.chevron.down")
-                                .font(.system(size: 9))
-                        }
-                        .padding(.horizontal, 6)
-                        .frame(height: 22)
-                    }
-                    .buttonStyle(.bordered)
-                }
+                SwitcherTransitionControl(
+                    effects: effects,
+                    currentEffect: client.switchEffect,
+                    onCut: { client.sendCut() },
+                    onAuto: { client.sendAuto() },
+                    onSelectEffect: { client.setTransitionEffect($0) }
+                )
                 .frame(width: 175)
                 
                 Divider()
                 
                 // Right: PIP Control
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("子母畫面 (PIP Control)")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(.secondary)
-                    
-                    Button(action: {
-                        client.setPipMode(client.pipMode == 0 ? 2 : 0)
-                    }) {
-                        HStack {
-                            Image(systemName: client.pipMode == 0 ? "rectangle.inset.topright.fill" : "xmark.circle")
-                            Text(client.pipMode == 0 ? "開啟 PIP 疊層" : "關閉 PIP 疊層")
-                        }
-                        .font(.system(size: 11, weight: .semibold))
-                        .frame(maxWidth: .infinity, minHeight: 28)
-                    }
-                    .buttonStyle(.bordered)
-                    
-                    Picker("", selection: Binding(
-                        get: { client.pipMode == 0 ? 0 : client.pipMode },
-                        set: { client.setPipMode($0) }
-                    )) {
-                        Text("無").tag(0)
-                        Text("左上").tag(2)
-                        Text("右上").tag(3)
-                        Text("左下").tag(4)
-                        Text("右下").tag(5)
-                    }
-                    .pickerStyle(.segmented)
-                    .controlSize(.small)
-                    .disabled(client.pipMode == 0)
-                }
+                SwitcherPipControl(
+                    pipMode: client.pipMode,
+                    onTogglePip: { client.setPipMode(client.pipMode == 0 ? 2 : 0) },
+                    onSelectPosition: { client.setPipMode($0) }
+                )
                 .frame(width: 195)
             }
             .padding(.horizontal, 10)
@@ -256,124 +172,41 @@ struct SwitcherControlView: View {
             
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 10) {
-                    // PGM (2x2 Grid)
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 4) {
-                            Circle().fill(Color.red).frame(width: 6, height: 6)
-                            Text("PROGRAM (目前輸出)")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundColor(.red)
-                        }
-                        
-                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
-                            ForEach(0..<4, id: \.self) { i in
-                                Button(action: { client.setPgmSource(i) }) {
-                                    Text(sources[i])
-                                        .font(.system(size: 11, weight: .bold))
-                                        .frame(maxWidth: .infinity, minHeight: 30)
-                                }
-                                .buttonStyle(BusButtonStyle(isActive: client.pgmSource == i, activeColor: .red))
-                            }
-                        }
-                    }
+                    SwitcherBusGrid(
+                        title: "PROGRAM (目前輸出)",
+                        color: .red,
+                        sources: sources,
+                        activeSource: client.pgmSource,
+                        onSelect: { client.setPgmSource($0) }
+                    )
                     
-                    // PST (2x2 Grid)
-                    VStack(alignment: .leading, spacing: 4) {
-                        HStack(spacing: 4) {
-                            Circle().fill(Color.green).frame(width: 6, height: 6)
-                            Text("PREVIEW (預監)")
-                                .font(.system(size: 10, weight: .bold))
-                                .foregroundColor(.green)
-                        }
-                        
-                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
-                            ForEach(0..<4, id: \.self) { i in
-                                Button(action: { client.setPstSource(i) }) {
-                                    Text(sources[i])
-                                        .font(.system(size: 11, weight: .bold))
-                                        .frame(maxWidth: .infinity, minHeight: 30)
-                                }
-                                .buttonStyle(BusButtonStyle(isActive: client.pstSource == i, activeColor: .green))
-                            }
-                        }
-                    }
+                    SwitcherBusGrid(
+                        title: "PREVIEW (預監)",
+                        color: .green,
+                        sources: sources,
+                        activeSource: client.pstSource,
+                        onSelect: { client.setPstSource($0) }
+                    )
                     
                     Divider()
                     
-                    // Transition
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("轉場 (Transition)")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(.secondary)
-                        
-                        HStack(spacing: 6) {
-                            Button(action: { client.sendCut() }) {
-                                Text("CUT")
-                                    .font(.system(size: 11, weight: .black))
-                                    .frame(maxWidth: .infinity, minHeight: 28)
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .tint(.red)
-                            
-                            Button(action: { client.sendAuto() }) {
-                                Text("AUTO")
-                                    .font(.system(size: 11, weight: .black))
-                                    .frame(maxWidth: .infinity, minHeight: 28)
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .tint(.green)
-                        }
-                        
-                        Menu {
-                            ForEach(0..<effects.count, id: \.self) { idx in
-                                Button(effects[idx]) {
-                                    client.setTransitionEffect(idx)
-                                }
-                            }
-                        } label: {
-                            HStack {
-                                Text("特效: \(effects[client.switchEffect < effects.count ? client.switchEffect : 0])")
-                                    .font(.system(size: 10))
-                                Spacer()
-                                Image(systemName: "chevron.up.chevron.down")
-                                    .font(.system(size: 8))
-                            }
-                            .frame(height: 20)
-                        }
-                        .buttonStyle(.bordered)
-                    }
+                    SwitcherTransitionControl(
+                        effects: effects,
+                        currentEffect: client.switchEffect,
+                        isCompact: true,
+                        onCut: { client.sendCut() },
+                        onAuto: { client.sendAuto() },
+                        onSelectEffect: { client.setTransitionEffect($0) }
+                    )
                     
                     Divider()
                     
-                    // PIP
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("子母畫面 (PIP)")
-                            .font(.system(size: 10, weight: .bold))
-                            .foregroundColor(.secondary)
-                        
-                        Button(action: {
-                            client.setPipMode(client.pipMode == 0 ? 2 : 0)
-                        }) {
-                            Text(client.pipMode == 0 ? "開啟 PIP" : "關閉 PIP")
-                                .font(.system(size: 10, weight: .semibold))
-                                .frame(maxWidth: .infinity, minHeight: 24)
-                        }
-                        .buttonStyle(.bordered)
-                        
-                        Picker("", selection: Binding(
-                            get: { client.pipMode == 0 ? 0 : client.pipMode },
-                            set: { client.setPipMode($0) }
-                        )) {
-                            Text("無").tag(0)
-                            Text("左上").tag(2)
-                            Text("右上").tag(3)
-                            Text("左下").tag(4)
-                            Text("右下").tag(5)
-                        }
-                        .pickerStyle(.segmented)
-                        .controlSize(.mini)
-                        .disabled(client.pipMode == 0)
-                    }
+                    SwitcherPipControl(
+                        pipMode: client.pipMode,
+                        isCompact: true,
+                        onTogglePip: { client.setPipMode(client.pipMode == 0 ? 2 : 0) },
+                        onSelectPosition: { client.setPipMode($0) }
+                    )
                 }
                 .padding(.horizontal, 6)
             }
@@ -437,40 +270,26 @@ struct SwitcherControlView: View {
             // Compact Switcher Controls beneath video
             ScrollView(.vertical, showsIndicators: false) {
                 VStack(spacing: 6) {
-                    // PGM & PST
-                    HStack(spacing: 6) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("PGM").font(.system(size: 9, weight: .bold)).foregroundColor(.red)
-                            HStack(spacing: 4) {
-                                ForEach(0..<4, id: \.self) { i in
-                                    Button(action: { client.setPgmSource(i) }) {
-                                        Text(sources[i])
-                                            .font(.system(size: 10, weight: .bold))
-                                            .frame(maxWidth: .infinity, minHeight: 26)
-                                    }
-                                    .buttonStyle(BusButtonStyle(isActive: client.pgmSource == i, activeColor: .red))
-                                }
-                            }
-                        }
-                    }
+                    SwitcherBusRow(
+                        title: "PGM",
+                        color: .red,
+                        sources: sources,
+                        activeSource: client.pgmSource,
+                        buttonHeight: 26,
+                        titleWidth: 35,
+                        onSelect: { client.setPgmSource($0) }
+                    )
                     
-                    HStack(spacing: 6) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("PST").font(.system(size: 9, weight: .bold)).foregroundColor(.green)
-                            HStack(spacing: 4) {
-                                ForEach(0..<4, id: \.self) { i in
-                                    Button(action: { client.setPstSource(i) }) {
-                                        Text(sources[i])
-                                            .font(.system(size: 10, weight: .bold))
-                                            .frame(maxWidth: .infinity, minHeight: 26)
-                                    }
-                                    .buttonStyle(BusButtonStyle(isActive: client.pstSource == i, activeColor: .green))
-                                }
-                            }
-                        }
-                    }
+                    SwitcherBusRow(
+                        title: "PST",
+                        color: .green,
+                        sources: sources,
+                        activeSource: client.pstSource,
+                        buttonHeight: 26,
+                        titleWidth: 35,
+                        onSelect: { client.setPstSource($0) }
+                    )
                     
-                    // Transition Quick Bar
                     HStack(spacing: 8) {
                         Button(action: { client.sendCut() }) {
                             Text("CUT")
@@ -512,118 +331,44 @@ struct SwitcherControlView: View {
             connectionHeader
             Divider()
             
-            // Program Bus
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Circle().fill(Color.red).frame(width: 8, height: 8)
-                    Text("PROGRAM (目前輸出 - 直播中)")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(.red)
-                }
-                HStack(spacing: 8) {
-                    ForEach(0..<4, id: \.self) { i in
-                        Button(action: { client.setPgmSource(i) }) {
-                            Text(sources[i])
-                                .font(.system(size: 13, weight: .bold))
-                                .frame(maxWidth: .infinity, minHeight: 38)
-                        }
-                        .buttonStyle(BusButtonStyle(isActive: client.pgmSource == i, activeColor: .red))
-                    }
-                }
-            }
+            SwitcherBusRow(
+                title: "PROGRAM (輸出)",
+                color: .red,
+                sources: sources,
+                activeSource: client.pgmSource,
+                buttonHeight: 38,
+                titleWidth: 110,
+                onSelect: { client.setPgmSource($0) }
+            )
             
-            // Preview Bus
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(spacing: 6) {
-                    Circle().fill(Color.green).frame(width: 8, height: 8)
-                    Text("PREVIEW (預監準備)")
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundColor(.green)
-                }
-                HStack(spacing: 8) {
-                    ForEach(0..<4, id: \.self) { i in
-                        Button(action: { client.setPstSource(i) }) {
-                            Text(sources[i])
-                                .font(.system(size: 13, weight: .bold))
-                                .frame(maxWidth: .infinity, minHeight: 38)
-                        }
-                        .buttonStyle(BusButtonStyle(isActive: client.pstSource == i, activeColor: .green))
-                    }
-                }
-            }
+            SwitcherBusRow(
+                title: "PREVIEW (預監)",
+                color: .green,
+                sources: sources,
+                activeSource: client.pstSource,
+                buttonHeight: 38,
+                titleWidth: 110,
+                onSelect: { client.setPstSource($0) }
+            )
             
             Divider()
             
-            // Transition & PIP
             HStack(spacing: 16) {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("轉場控制 (Transition)")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(.secondary)
-                    
-                    HStack(spacing: 8) {
-                        Button(action: { client.sendCut() }) {
-                            Text("CUT")
-                                .font(.system(size: 12, weight: .black))
-                                .frame(maxWidth: .infinity, minHeight: 34)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.red)
-                        
-                        Button(action: { client.sendAuto() }) {
-                            Text("AUTO")
-                                .font(.system(size: 12, weight: .black))
-                                .frame(maxWidth: .infinity, minHeight: 34)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.green)
-                    }
-                    
-                    Menu {
-                        ForEach(0..<effects.count, id: \.self) { idx in
-                            Button(effects[idx]) { client.setTransitionEffect(idx) }
-                        }
-                    } label: {
-                        HStack {
-                            Text("轉場特效: \(effects[client.switchEffect < effects.count ? client.switchEffect : 0])")
-                                .font(.system(size: 11))
-                            Spacer()
-                            Image(systemName: "chevron.up.chevron.down")
-                        }
-                        .frame(height: 24)
-                    }
-                    .buttonStyle(.bordered)
-                }
+                SwitcherTransitionControl(
+                    effects: effects,
+                    currentEffect: client.switchEffect,
+                    onCut: { client.sendCut() },
+                    onAuto: { client.sendAuto() },
+                    onSelectEffect: { client.setTransitionEffect($0) }
+                )
                 
                 Divider()
                 
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("子母畫面 (PIP Control)")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(.secondary)
-                    
-                    Button(action: {
-                        client.setPipMode(client.pipMode == 0 ? 2 : 0)
-                    }) {
-                        Text(client.pipMode == 0 ? "開啟 PIP" : "關閉 PIP")
-                            .font(.system(size: 11, weight: .semibold))
-                            .frame(maxWidth: .infinity, minHeight: 34)
-                    }
-                    .buttonStyle(.bordered)
-                    
-                    Picker("", selection: Binding(
-                        get: { client.pipMode == 0 ? 0 : client.pipMode },
-                        set: { client.setPipMode($0) }
-                    )) {
-                        Text("無").tag(0)
-                        Text("左上").tag(2)
-                        Text("右上").tag(3)
-                        Text("左下").tag(4)
-                        Text("右下").tag(5)
-                    }
-                    .pickerStyle(.segmented)
-                    .disabled(client.pipMode == 0)
-                }
+                SwitcherPipControl(
+                    pipMode: client.pipMode,
+                    onTogglePip: { client.setPipMode(client.pipMode == 0 ? 2 : 0) },
+                    onSelectPosition: { client.setPipMode($0) }
+                )
             }
         }
         .padding(14)
@@ -631,7 +376,7 @@ struct SwitcherControlView: View {
         .background(Color(nsColor: .windowBackgroundColor))
     }
     
-    // MARK: - Standard Layout (Classic)
+    // MARK: - 5. Standard Layout (Classic)
     private var standardLayout: some View {
         VStack(spacing: 8) {
             connectionHeader
@@ -641,110 +386,42 @@ struct SwitcherControlView: View {
             Divider()
             
             VStack(spacing: 8) {
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("PROGRAM (目前輸出)")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(.red)
-                    HStack(spacing: 8) {
-                        ForEach(0..<4, id: \.self) { i in
-                            Button(action: { client.setPgmSource(i) }) {
-                                Text(sources[i])
-                                    .fontWeight(.bold)
-                                    .frame(maxWidth: .infinity, minHeight: 32)
-                            }
-                            .buttonStyle(BusButtonStyle(isActive: client.pgmSource == i, activeColor: .red))
-                        }
-                    }
-                }
-                
-                VStack(alignment: .leading, spacing: 3) {
-                    Text("PREVIEW (預監畫面)")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(.green)
-                    HStack(spacing: 8) {
-                        ForEach(0..<4, id: \.self) { i in
-                            Button(action: { client.setPstSource(i) }) {
-                                Text(sources[i])
-                                    .fontWeight(.bold)
-                                    .frame(maxWidth: .infinity, minHeight: 32)
-                            }
-                            .buttonStyle(BusButtonStyle(isActive: client.pstSource == i, activeColor: .green))
-                        }
-                    }
-                }
+                SwitcherBusRow(
+                    title: "PROGRAM",
+                    color: .red,
+                    sources: sources,
+                    activeSource: client.pgmSource,
+                    titleWidth: 70,
+                    onSelect: { client.setPgmSource($0) }
+                )
+                SwitcherBusRow(
+                    title: "PREVIEW",
+                    color: .green,
+                    sources: sources,
+                    activeSource: client.pstSource,
+                    titleWidth: 70,
+                    onSelect: { client.setPstSource($0) }
+                )
             }
             .padding(.horizontal, 8)
             
             Divider()
             
             HStack(spacing: 16) {
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("轉場控制 (Transition)")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(.secondary)
-                    
-                    HStack(spacing: 8) {
-                        Button(action: { client.sendCut() }) {
-                            Text("CUT")
-                                .fontWeight(.bold)
-                                .frame(maxWidth: .infinity, minHeight: 32)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.red)
-                        
-                        Button(action: { client.sendAuto() }) {
-                            Text("AUTO")
-                                .fontWeight(.bold)
-                                .frame(maxWidth: .infinity, minHeight: 32)
-                        }
-                        .buttonStyle(.borderedProminent)
-                        .tint(.green)
-                    }
-                    
-                    Menu {
-                        ForEach(0..<effects.count, id: \.self) { idx in
-                            Button(effects[idx]) { client.setTransitionEffect(idx) }
-                        }
-                    } label: {
-                        HStack {
-                            Text("轉場特效: \(effects[client.switchEffect < effects.count ? client.switchEffect : 0])")
-                            Spacer()
-                            Image(systemName: "chevron.up.chevron.down")
-                        }
-                        .padding(.horizontal, 8)
-                        .frame(height: 24)
-                    }
-                    .buttonStyle(.bordered)
-                }
+                SwitcherTransitionControl(
+                    effects: effects,
+                    currentEffect: client.switchEffect,
+                    onCut: { client.sendCut() },
+                    onAuto: { client.sendAuto() },
+                    onSelectEffect: { client.setTransitionEffect($0) }
+                )
                 .frame(maxWidth: .infinity)
                 
-                VStack(alignment: .leading, spacing: 4) {
-                    Text("子母畫面 (PIP Control)")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundColor(.secondary)
-                    
-                    Button(action: {
-                        client.setPipMode(client.pipMode == 0 ? 2 : 0)
-                    }) {
-                        Text(client.pipMode == 0 ? "開啟 PIP" : "關閉 PIP")
-                            .fontWeight(.semibold)
-                            .frame(maxWidth: .infinity, minHeight: 32)
-                    }
-                    .buttonStyle(.bordered)
-                    
-                    Picker("", selection: Binding(
-                        get: { client.pipMode == 0 ? 0 : client.pipMode },
-                        set: { client.setPipMode($0) }
-                    )) {
-                        Text("無").tag(0)
-                        Text("左上").tag(2)
-                        Text("右上").tag(3)
-                        Text("左下").tag(4)
-                        Text("右下").tag(5)
-                    }
-                    .pickerStyle(.segmented)
-                    .disabled(client.pipMode == 0)
-                }
+                SwitcherPipControl(
+                    pipMode: client.pipMode,
+                    onTogglePip: { client.setPipMode(client.pipMode == 0 ? 2 : 0) },
+                    onSelectPosition: { client.setPipMode($0) }
+                )
                 .frame(maxWidth: .infinity)
             }
             .padding(.horizontal, 8)
@@ -752,6 +429,160 @@ struct SwitcherControlView: View {
         }
         .padding(8)
         .background(Color(nsColor: .windowBackgroundColor).opacity(0.8))
+    }
+}
+
+// MARK: - Internal Reusable Subviews (內部專用子組件，避免檔案零碎化)
+
+private struct SwitcherBusRow: View {
+    let title: String
+    let color: Color
+    let sources: [String]
+    let activeSource: Int
+    var buttonHeight: CGFloat = 34
+    var titleWidth: CGFloat = 85
+    let onSelect: (Int) -> Void
+    
+    var body: some View {
+        HStack(spacing: 8) {
+            HStack(spacing: 4) {
+                Circle().fill(color).frame(width: 8, height: 8)
+                Text(title)
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(color)
+            }
+            .frame(width: titleWidth, alignment: .leading)
+            
+            ForEach(0..<sources.count, id: \.self) { i in
+                Button(action: { onSelect(i) }) {
+                    Text(sources[i])
+                        .font(.system(size: 11, weight: .bold))
+                        .frame(maxWidth: .infinity, minHeight: buttonHeight)
+                }
+                .buttonStyle(BusButtonStyle(isActive: activeSource == i, activeColor: color))
+            }
+        }
+    }
+}
+
+private struct SwitcherBusGrid: View {
+    let title: String
+    let color: Color
+    let sources: [String]
+    let activeSource: Int
+    let onSelect: (Int) -> Void
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: 4) {
+                Circle().fill(color).frame(width: 6, height: 6)
+                Text(title)
+                    .font(.system(size: 10, weight: .bold))
+                    .foregroundColor(color)
+            }
+            
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 6) {
+                ForEach(0..<sources.count, id: \.self) { i in
+                    Button(action: { onSelect(i) }) {
+                        Text(sources[i])
+                            .font(.system(size: 11, weight: .bold))
+                            .frame(maxWidth: .infinity, minHeight: 30)
+                    }
+                    .buttonStyle(BusButtonStyle(isActive: activeSource == i, activeColor: color))
+                }
+            }
+        }
+    }
+}
+
+private struct SwitcherTransitionControl: View {
+    let effects: [String]
+    let currentEffect: Int
+    var isCompact: Bool = false
+    let onCut: () -> Void
+    let onAuto: () -> Void
+    let onSelectEffect: (Int) -> Void
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: isCompact ? 4 : 6) {
+            Text("轉場控制 (Transition)")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundColor(.secondary)
+            
+            HStack(spacing: isCompact ? 6 : 8) {
+                Button(action: onCut) {
+                    Text("CUT")
+                        .font(.system(size: isCompact ? 11 : 12, weight: .black))
+                        .frame(maxWidth: .infinity, minHeight: isCompact ? 28 : 32)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.red)
+                
+                Button(action: onAuto) {
+                    Text("AUTO")
+                        .font(.system(size: isCompact ? 11 : 12, weight: .black))
+                        .frame(maxWidth: .infinity, minHeight: isCompact ? 28 : 32)
+                }
+                .buttonStyle(.borderedProminent)
+                .tint(.green)
+            }
+            
+            Menu {
+                ForEach(0..<effects.count, id: \.self) { idx in
+                    Button(effects[idx]) { onSelectEffect(idx) }
+                }
+            } label: {
+                HStack {
+                    Text("特效: \(effects[currentEffect < effects.count ? currentEffect : 0])")
+                        .font(.system(size: isCompact ? 10 : 11))
+                    Spacer()
+                    Image(systemName: "chevron.up.chevron.down")
+                        .font(.system(size: 8))
+                }
+                .padding(.horizontal, isCompact ? 4 : 6)
+                .frame(height: isCompact ? 20 : 24)
+            }
+            .buttonStyle(.bordered)
+        }
+    }
+}
+
+private struct SwitcherPipControl: View {
+    let pipMode: Int
+    var isCompact: Bool = false
+    let onTogglePip: () -> Void
+    let onSelectPosition: (Int) -> Void
+    
+    var body: some View {
+        VStack(alignment: .leading, spacing: isCompact ? 4 : 6) {
+            Text("子母畫面 (PIP Control)")
+                .font(.system(size: 10, weight: .bold))
+                .foregroundColor(.secondary)
+            
+            Button(action: onTogglePip) {
+                HStack {
+                    Image(systemName: pipMode == 0 ? "rectangle.inset.topright.fill" : "xmark.circle")
+                    Text(pipMode == 0 ? "開啟 PIP 疊層" : "關閉 PIP 疊層")
+                }
+                .font(.system(size: isCompact ? 10 : 11, weight: .semibold))
+                .frame(maxWidth: .infinity, minHeight: isCompact ? 24 : 28)
+            }
+            .buttonStyle(.bordered)
+            
+            Picker("", selection: Binding(
+                get: { pipMode == 0 ? 0 : pipMode },
+                set: { onSelectPosition($0) }
+            )) {
+                Text("無").tag(0)
+                Text("左上").tag(2)
+                Text("右上").tag(3)
+                Text("左下").tag(4)
+                Text("右下").tag(5)
+            }
+            .pickerStyle(.segmented)
+            .controlSize(isCompact ? .mini : .small)
+            .disabled(pipMode == 0)
+        }
     }
 }
 

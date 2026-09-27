@@ -94,9 +94,38 @@ class CameraRepository {
     func setSwitcherLayoutMode(_ mode: SwitcherLayoutMode) {
         defaults.set(mode.rawValue, forKey: "switcher_layout_mode")
     }
+    
+    // MARK: - Unified App Settings
+    func getAppSettings() -> AppSettings {
+        if let data = defaults.data(forKey: "app_settings"),
+           let settings = try? JSONDecoder().decode(AppSettings.self, from: data) {
+            return settings
+        }
+        return AppSettings(
+            switcherIp: getSwitcherIp(),
+            switcherLayoutMode: getSwitcherLayoutMode(),
+            youtubeChannelId: getYoutubeChannelId(),
+            youtubeStreamKey: getYoutubeStreamKey(),
+            expoStrength: getExpoStrength(),
+            virtualJoystickEnabled: isVirtualJoystickEnabled()
+        )
+    }
+    
+    func saveAppSettings(_ settings: AppSettings) {
+        if let encoded = try? JSONEncoder().encode(settings) {
+            defaults.set(encoded, forKey: "app_settings")
+        }
+        // Keep legacy keys synchronized for backward compatibility
+        setSwitcherIp(settings.switcherIp)
+        setSwitcherLayoutMode(settings.switcherLayoutMode)
+        setYoutubeChannelId(settings.youtubeChannelId)
+        setYoutubeStreamKey(settings.youtubeStreamKey)
+        setExpoStrength(settings.expoStrength)
+        setVirtualJoystickEnabled(settings.virtualJoystickEnabled)
+    }
 }
 
-enum SwitcherLayoutMode: String, CaseIterable, Identifiable {
+enum SwitcherLayoutMode: String, CaseIterable, Identifiable, Codable {
     case bottomConsole = "底部廣播控制台"
     case rightSidebar = "右側直立導播欄"
     case floatingWindow = "獨立懸浮導播窗"
@@ -112,4 +141,13 @@ enum SwitcherLayoutMode: String, CaseIterable, Identifiable {
         case .embeddedSlot: return "rectangle.on.rectangle"
         }
     }
+}
+
+struct AppSettings: Codable, Equatable {
+    var switcherIp: String = "192.168.5.99"
+    var switcherLayoutMode: SwitcherLayoutMode = .bottomConsole
+    var youtubeChannelId: String = "UCrkMMKcu78UNdcthAMOL-tA"
+    var youtubeStreamKey: String = "u7ug-xjxv-vkk4-5mtm-6xbk"
+    var expoStrength: Float = 2.0
+    var virtualJoystickEnabled: Bool = true
 }

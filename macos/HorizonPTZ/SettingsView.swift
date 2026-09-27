@@ -145,11 +145,14 @@ struct SettingsView: View {
                     cam2Config = localCam2
                     CameraRepository.shared.saveConfig(index: 1, config: localCam1)
                     CameraRepository.shared.saveConfig(index: 2, config: localCam2)
-                    CameraRepository.shared.setExpoStrength(expoStrength)
-                    CameraRepository.shared.setSwitcherIp(switcherIp)
-                    CameraRepository.shared.setSwitcherLayoutMode(switcherLayoutMode)
-                    CameraRepository.shared.setYoutubeChannelId(youtubeChannelId)
-                    CameraRepository.shared.setYoutubeStreamKey(youtubeStreamKey)
+                    
+                    var appSettings = CameraRepository.shared.getAppSettings()
+                    appSettings.expoStrength = expoStrength
+                    appSettings.switcherIp = switcherIp
+                    appSettings.switcherLayoutMode = switcherLayoutMode
+                    appSettings.youtubeChannelId = youtubeChannelId
+                    appSettings.youtubeStreamKey = youtubeStreamKey
+                    CameraRepository.shared.saveAppSettings(appSettings)
                     onSave()
                 }
                 .keyboardShortcut(.defaultAction)

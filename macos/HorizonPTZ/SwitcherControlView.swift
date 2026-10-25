@@ -223,9 +223,9 @@ struct SwitcherControlView: View {
     // MARK: - 3. Embedded Slot Layout (單槽子母預覽)
     private func embeddedLayout(cameraIndex: Int) -> some View {
         let camConfig = CameraRepository.shared.getConfig(index: cameraIndex)
-        let isPgm = (client.pgmSource == (cameraIndex - 1))
-        let isPst = (client.pstSource == (cameraIndex - 1))
-        let tallyColor: Color = isPgm ? .red : (isPst ? .green : Color.secondary.opacity(0.3))
+        let isPgm = client.isConnected && (client.pgmSource == (cameraIndex - 1))
+        let isPst = client.isConnected && (client.pstSource == (cameraIndex - 1))
+        let tallyColor: Color = isPgm ? .red : (isPst ? .green : Color.secondary.opacity(0.2))
         let tallyLineWidth: CGFloat = (isPgm || isPst) ? 3.0 : 1.0
         
         return VStack(spacing: 8) {

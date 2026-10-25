@@ -14,6 +14,7 @@ struct MainView: View {
     @State private var activeJoystickControl = 1 // 1: CAM1, 2: CAM2, 3: Both
     
     @State private var showVirtualJoysticks = CameraRepository.shared.isVirtualJoystickEnabled()
+    @State private var mouseDragPtzMode: MouseDragPtzMode = CameraRepository.shared.getMouseDragPtzMode()
     
     @ObservedObject private var joystickManager = JoystickManager.shared
     @ObservedObject private var rgbClient = RGBLinkClient.shared
@@ -35,31 +36,33 @@ struct MainView: View {
     var body: some View {
         VStack(spacing: 0) {
             // Top Bar
-            ZStack {
-                // Left-aligned connection status
-                HStack {
-                    HStack(spacing: 6) {
-                        Image(systemName: "circle.fill")
-                            .foregroundColor(joystickManager.isControllerConnected ? .green : .gray)
-                            .font(.system(size: 8))
-                        Text(joystickManager.isControllerConnected ? "控制器已連線: \(joystickManager.controllerName)" : "無硬體控制器")
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary)
-                    }
-                    Spacer()
+            HStack(spacing: 8) {
+                // 1. 左側：硬體連線狀態
+                HStack(spacing: 5) {
+                    Image(systemName: "circle.fill")
+                        .foregroundColor(joystickManager.isControllerConnected ? .green : .gray)
+                        .font(.system(size: 7))
+                    Text(joystickManager.isControllerConnected ? joystickManager.controllerName : "無控制器")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                        .lineLimit(1)
                 }
                 
-                // Centered toggle button and layout selector
-                HStack(spacing: 8) {
+                Divider()
+                    .frame(height: 14)
+                
+                // 2. 視窗與導播版面切換
+                HStack(spacing: 4) {
                     Button(action: {
                         toggleBothPanels()
                     }) {
-                        Label("切換雙視窗", systemImage: "arrow.left.and.right.righttriangle.left.and.righttriangle.right")
+                        Label("雙視窗", systemImage: "arrow.left.and.right.righttriangle.left.and.righttriangle.right")
+                            .font(.system(size: 11))
                     }
                     .buttonStyle(.bordered)
                     .controlSize(.small)
+                    .help("切換視窗雙邊內容對調")
                     
-                    // Switcher Layout Selector
                     Picker("", selection: $switcherLayoutMode) {
                         ForEach(SwitcherLayoutMode.allCases) { mode in
                             Label(mode.rawValue, systemImage: mode.iconName).tag(mode)
@@ -67,7 +70,7 @@ struct MainView: View {
                     }
                     .pickerStyle(.menu)
                     .font(.system(size: 11, weight: .semibold))
-                    .frame(width: 145)
+                    .frame(width: 125)
                     .help("切換導播機排版模式 (底部主控台 / 右側導播欄 / 獨立懸浮窗 / 單槽子母預覽)")
                     .onChange(of: switcherLayoutMode) { newMode in
                         CameraRepository.shared.setSwitcherLayoutMode(newMode)
@@ -80,8 +83,8 @@ struct MainView: View {
                         Button(action: {
                             FloatingSwitcherWindowController.shared.toggleWindow()
                         }) {
-                            Label(floatingWindowController.isVisible ? "導播窗" : "開啟導播窗", systemImage: "macwindow.on.rectangle")
-                                .font(.system(size: 11, weight: .bold))
+                            Image(systemName: "macwindow.on.rectangle")
+                                .font(.system(size: 11))
                                 .foregroundColor(floatingWindowController.isVisible ? .accentColor : .secondary)
                         }
                         .buttonStyle(.bordered)
@@ -89,60 +92,109 @@ struct MainView: View {
                     }
                 }
                 
-                // Right-aligned settings and controls
-                HStack {
-                    Spacer()
-                    HStack(spacing: 10) {
-                        HStack(spacing: 4) {
-                            Text("實體搖桿:")
-                                .font(.system(size: 11))
-                                .foregroundColor(.secondary)
-                            Picker("", selection: $activeJoystickControl) {
-                                Text("CAM 01").tag(1)
-                                Text("CAM 02").tag(2)
-                                Text("雙機同步").tag(3)
+                Spacer()
+                
+                // 3. 右側：PTZ 操控、實體遙控、AI 與設定 (固定精準寬度與標準 controlSize)
+                HStack(spacing: 8) {
+                    // PTZ 操控：搖桿 / 拖曳 (固定切換)
+                    HStack(spacing: 4) {
+                        Button(action: {
+                            showVirtualJoysticks.toggle()
+                            CameraRepository.shared.setVirtualJoystickEnabled(showVirtualJoysticks)
+                        }) {
+                            HStack(spacing: 3) {
+                                Image(systemName: showVirtualJoysticks ? "gamecontroller.fill" : "hand.draw.fill")
+                                    .font(.system(size: 10))
+                                Text(showVirtualJoysticks ? "搖桿盤" : "拖曳中")
+                                    .font(.system(size: 11, weight: .semibold))
+                            }
+                        }
+                        .buttonStyle(.bordered)
+                        .tint(showVirtualJoysticks ? .gray : .blue)
+                        .controlSize(.small)
+                        .help(showVirtualJoysticks ? "點擊切換為滑鼠拖曳操控 (隱藏搖桿)" : "點擊切換為畫面虛擬搖桿")
+                        
+                        if !showVirtualJoysticks {
+                            Picker("", selection: $mouseDragPtzMode) {
+                                ForEach(MouseDragPtzMode.allCases) { mode in
+                                    Text(mode == .vector ? "向量" : "抓取").tag(mode)
+                                }
                             }
                             .pickerStyle(.segmented)
                             .labelsHidden()
-                            .frame(width: 170)
-                        }
-                        
-                        // Dual AI Engine Selector
-                        Picker("", selection: $counterService.currentEngineMode) {
-                            ForEach(AiEngineMode.allCases) { mode in
-                                Text(mode.rawValue).tag(mode)
+                            .frame(width: 90)
+                            .controlSize(.small)
+                            .onChange(of: mouseDragPtzMode) { newMode in
+                                CameraRepository.shared.setMouseDragPtzMode(newMode)
                             }
-                        }
-                        .pickerStyle(.menu)
-                        .font(.system(size: 11, weight: .semibold))
-                        .frame(width: 175)
-                        .help("選擇 AI 人數識別處理引擎 (Apple Vision 360° 或 CoreML YOLO 深度學習)")
-                        .onChange(of: counterService.currentEngineMode) { _ in
-                            counterService.saveCurrentSettings()
-                        }
-                        
-                        Button(action: {
-                            isAiLiveEnabled.toggle()
-                        }) {
-                            Label(isAiLiveEnabled ? "🟢 AI 追蹤 ON" : "👥 AI 追蹤 OFF", systemImage: isAiLiveEnabled ? "bolt.shield.fill" : "person.3.sequence.fill")
-                                .font(.system(size: 11, weight: .bold))
-                                .foregroundColor(isAiLiveEnabled ? .green : .primary)
-                                .padding(.horizontal, 8)
-                                .padding(.vertical, 4)
-                                .background(isAiLiveEnabled ? Color.green.opacity(0.15) : Color.secondary.opacity(0.12))
-                                .cornerRadius(6)
-                        }
-                        .buttonStyle(.plain)
-                        
-                        Button(action: {
-                            showSettings = true
-                        }) {
-                            Label("參數設定", systemImage: "gearshape")
+                            .help("選擇滑鼠拖曳操控模式：向量式（拉出箭頭控制方向與速度）或抓取式（如同地圖畫布抓取平移）")
                         }
                     }
+                    
+                    Divider()
+                        .frame(height: 14)
+                    
+                    // 實體搖桿指派 (清晰獨立間距，防止分段控制按鈕覆蓋搖桿 icon)
+                    HStack(spacing: 6) {
+                        Image(systemName: "gamecontroller")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                            .frame(width: 16)
+                        
+                        Picker("", selection: $activeJoystickControl) {
+                            Text("CAM 1").tag(1)
+                            Text("CAM 2").tag(2)
+                            Text("雙機").tag(3)
+                        }
+                        .pickerStyle(.segmented)
+                        .labelsHidden()
+                        .frame(width: 142)
+                        .controlSize(.small)
+                    }
+                    
+                    Divider()
+                        .frame(height: 14)
+                    
+                    // AI 引擎選單
+                    Picker("", selection: $counterService.currentEngineMode) {
+                        ForEach(AiEngineMode.allCases) { mode in
+                            Text(mode.rawValue).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.menu)
+                    .font(.system(size: 11, weight: .semibold))
+                    .frame(width: 150)
+                    .controlSize(.small)
+                    .help("選擇 AI 人數識別處理引擎")
+                    .onChange(of: counterService.currentEngineMode) { _ in
+                        counterService.saveCurrentSettings()
+                    }
+                    
+                    // AI 開關按鈕 (標準 bordered 按鈕)
+                    Button(action: {
+                        isAiLiveEnabled.toggle()
+                    }) {
+                        Label(isAiLiveEnabled ? "AI: ON" : "AI: OFF", systemImage: isAiLiveEnabled ? "bolt.shield.fill" : "person.3.sequence.fill")
+                            .font(.system(size: 11, weight: .bold))
+                    }
+                    .buttonStyle(.bordered)
+                    .tint(isAiLiveEnabled ? .green : .gray)
+                    .controlSize(.small)
+                    
+                    // 設定按鈕
+                    Button(action: {
+                        showSettings = true
+                    }) {
+                        Image(systemName: "gearshape")
+                            .font(.system(size: 11))
+                    }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .help("參數設定")
                 }
             }
-            .padding(10)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 6)
             .background(Color(nsColor: .windowBackgroundColor))
             Divider()
             
@@ -215,6 +267,7 @@ struct MainView: View {
         viscaClient1 = ViscaClient(config: cam1Config)
         viscaClient2 = ViscaClient(config: cam2Config)
         showVirtualJoysticks = CameraRepository.shared.isVirtualJoystickEnabled()
+        mouseDragPtzMode = CameraRepository.shared.getMouseDragPtzMode()
     }
     
     private func setupHardwareJoystick() {
@@ -320,8 +373,8 @@ struct MainView: View {
     }
     
     private func tabbedPanel(index: Int, selection: Binding<Int>, config: CameraConfig, client: ViscaClient?) -> some View {
-        let isPgm = (rgbClient.pgmSource == (index - 1))
-        let isPst = (rgbClient.pstSource == (index - 1))
+        let isPgm = rgbClient.isConnected && (rgbClient.pgmSource == (index - 1))
+        let isPst = rgbClient.isConnected && (rgbClient.pstSource == (index - 1))
         
         return VStack(spacing: 6) {
             // Header with Switcher & Tally Badge
@@ -375,7 +428,8 @@ struct MainView: View {
                     Text("導播機").tag(2)
                 }
                 .pickerStyle(.segmented)
-                .frame(width: 150)
+                .controlSize(.small)
+                .frame(width: 145)
             }
             .padding(.horizontal, 4)
             
@@ -413,10 +467,10 @@ struct MainView: View {
     }
     
     private func cameraContent(index: Int, config: CameraConfig, client: ViscaClient?) -> some View {
-        let isPgm = (rgbClient.pgmSource == (index - 1))
-        let isPst = (rgbClient.pstSource == (index - 1))
+        let isPgm = rgbClient.isConnected && (rgbClient.pgmSource == (index - 1))
+        let isPst = rgbClient.isConnected && (rgbClient.pstSource == (index - 1))
         
-        let tallyColor: Color = isPgm ? .red : (isPst ? .green : Color.secondary.opacity(0.3))
+        let tallyColor: Color = isPgm ? .red : (isPst ? .green : Color.secondary.opacity(0.2))
         let tallyLineWidth: CGFloat = (isPgm || isPst) ? 3.5 : 1.0
         
         return VStack(spacing: 6) {
@@ -432,6 +486,26 @@ struct MainView: View {
                             .stroke(tallyColor, lineWidth: tallyLineWidth)
                             .shadow(color: isPgm ? Color.red.opacity(0.6) : (isPst ? Color.green.opacity(0.6) : Color.clear), radius: (isPgm || isPst) ? 6 : 0)
                     )
+                
+                // Mouse PTZ Dragging Overlay (當 PTZ 控制器隱藏時啟用)
+                if !showVirtualJoysticks {
+                    MousePtzControlOverlay(
+                        cameraIndex: index,
+                        client: client,
+                        sensitivity: getSensitivity(for: index),
+                        dragMode: mouseDragPtzMode,
+                        onToggleMode: {
+                            let next: MouseDragPtzMode = (mouseDragPtzMode == .vector) ? .canvasGrab : .vector
+                            mouseDragPtzMode = next
+                            CameraRepository.shared.setMouseDragPtzMode(next)
+                        },
+                        onShowController: {
+                            showVirtualJoysticks = true
+                            CameraRepository.shared.setVirtualJoystickEnabled(true)
+                        }
+                    )
+                    .clipShape(RoundedRectangle(cornerRadius: 8))
+                }
                 
                 // Virtual Joysticks overlay
                 if showVirtualJoysticks {
@@ -459,6 +533,26 @@ struct MainView: View {
             
             // Camera control bar
             HStack(spacing: 12) {
+                // PTZ 模式按鈕 (控制器 / 滑鼠拖曳)
+                Button(action: {
+                    showVirtualJoysticks.toggle()
+                    CameraRepository.shared.setVirtualJoystickEnabled(showVirtualJoysticks)
+                }) {
+                    HStack(spacing: 3) {
+                        Image(systemName: showVirtualJoysticks ? "gamecontroller.fill" : "hand.draw.fill")
+                            .font(.system(size: 10))
+                        Text(showVirtualJoysticks ? "隱藏 PTZ" : "拖曳中")
+                            .font(.system(size: 10, weight: .semibold))
+                    }
+                    .foregroundColor(showVirtualJoysticks ? .secondary : .white)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 4)
+                    .background(showVirtualJoysticks ? Color(nsColor: .controlColor) : Color.blue)
+                    .cornerRadius(4)
+                }
+                .buttonStyle(.plain)
+                .help(showVirtualJoysticks ? "點擊隱藏 PTZ 控制器，改用滑鼠直接在畫面上拖曳移動鏡頭" : "目前為滑鼠拖曳模式，點擊還原控制器")
+                
                 // Zoom controls
                 HStack(spacing: 4) {
                     Image(systemName: "plus.magnifyingglass")

@@ -6,8 +6,8 @@ class RGBLinkClient: ObservableObject {
     
     @Published var isConnected = false
     @Published var switcherIp: String = "192.168.5.99"
-    @Published var pgmSource = 0 // 0-3 (CAM1-4)
-    @Published var pstSource = 1 // 0-3 (CAM1-4)
+    @Published var pgmSource = -1 // 0-3 (CAM1-4), -1: 未連線或未選中
+    @Published var pstSource = -1 // 0-3 (CAM1-4), -1: 未連線或未選中
     @Published var pipMode = 0 // 0: Off, 1+: On
     @Published var switchEffect = 0 // 0+: Cut, Fade, etc.
     
@@ -73,6 +73,8 @@ class RGBLinkClient: ObservableObject {
         connection = nil
         DispatchQueue.main.async {
             self.isConnected = false
+            self.pgmSource = -1
+            self.pstSource = -1
         }
     }
     
@@ -93,6 +95,8 @@ class RGBLinkClient: ObservableObject {
                     if elapsed > 20.0 {
                         if self.isConnected {
                             self.isConnected = false
+                            self.pgmSource = -1
+                            self.pstSource = -1
                             print("RGBLink connection timeout: no feedback received")
                         }
                     } else {
@@ -103,6 +107,8 @@ class RGBLinkClient: ObservableObject {
                 } else {
                     if self.isConnected {
                         self.isConnected = false
+                        self.pgmSource = -1
+                        self.pstSource = -1
                     }
                 }
             }
@@ -118,6 +124,9 @@ class RGBLinkClient: ObservableObject {
     private func sendLivenessPoll() {
         // Query device model ONLY (acts as a light ping to prevent CPU congestion on the switcher)
         sendCommand(cmd: "68", dat1: "01", dat2: "00", dat3: "00", dat4: "00")
+        // Query active PGM & PST sources
+        sendCommand(cmd: "75", dat1: "03", dat2: "00", dat3: "00", dat4: "01")
+        sendCommand(cmd: "75", dat1: "03", dat2: "00", dat3: "00", dat4: "00")
     }
     
     private func startReceiving() {

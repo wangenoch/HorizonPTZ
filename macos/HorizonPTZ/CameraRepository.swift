@@ -33,6 +33,15 @@ class CameraRepository {
         defaults.set(enabled, forKey: "virtual_joystick_enabled")
     }
     
+    func getMouseDragPtzMode() -> MouseDragPtzMode {
+        let raw = defaults.string(forKey: "mouse_drag_ptz_mode") ?? MouseDragPtzMode.vector.rawValue
+        return MouseDragPtzMode(rawValue: raw) ?? .vector
+    }
+    
+    func setMouseDragPtzMode(_ mode: MouseDragPtzMode) {
+        defaults.set(mode.rawValue, forKey: "mouse_drag_ptz_mode")
+    }
+    
     func getExpoStrength() -> Float {
         return defaults.float(forKey: "expo_strength") == 0 ? 2.0 : defaults.float(forKey: "expo_strength")
     }
@@ -158,6 +167,34 @@ enum SwitcherLayoutMode: String, CaseIterable, Identifiable, Codable {
     }
 }
 
+enum MouseDragPtzMode: String, CaseIterable, Identifiable, Codable {
+    case vector = "vector"
+    case canvasGrab = "canvasGrab"
+    
+    var id: String { rawValue }
+    
+    var title: String {
+        switch self {
+        case .vector: return "向量式"
+        case .canvasGrab: return "抓取式"
+        }
+    }
+    
+    var icon: String {
+        switch self {
+        case .vector: return "arrow.up.right"
+        case .canvasGrab: return "hand.draw"
+        }
+    }
+    
+    var helpText: String {
+        switch self {
+        case .vector: return "向量模式：按住滑鼠拉出箭頭，拉的方向為旋轉方向，拉的距離決定速度（拉越遠越快）"
+        case .canvasGrab: return "抓取模式：像地圖抓取畫布平移，即時跟隨滑鼠拖曳移動鏡頭"
+        }
+    }
+}
+
 struct AppSettings: Codable, Equatable {
     var switcherIp: String = "192.168.5.99"
     var switcherLayoutMode: SwitcherLayoutMode = .bottomConsole
@@ -165,4 +202,5 @@ struct AppSettings: Codable, Equatable {
     var youtubeStreamKey: String = "u7ug-xjxv-vkk4-5mtm-6xbk"
     var expoStrength: Float = 2.0
     var virtualJoystickEnabled: Bool = true
+    var mouseDragPtzMode: MouseDragPtzMode = .vector
 }

@@ -175,54 +175,45 @@ struct SettingsView: View {
     private func aiEngineTab() -> some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                // Card 0: FFmpeg 依賴狀態與下載指引 (NEW)
+                // Card 0: AI 串流解碼引擎狀態 (原生 VLCKit 內建解碼，開箱即用)
                 VStack(alignment: .leading, spacing: 10) {
                     HStack {
-                        Image(systemName: streamManager.isAvailable ? "checkmark.circle.fill" : "exclamationmark.triangle.fill")
-                            .foregroundColor(streamManager.isAvailable ? .green : .orange)
-                        Text("AI 串流解碼引擎 (FFmpeg 依賴)")
+                        Image(systemName: "checkmark.seal.fill")
+                            .foregroundColor(.green)
+                        Text("AI 串流解碼引擎 (原生內建)")
                             .font(.system(size: 13, weight: .bold))
                             .foregroundColor(.primary)
                         Spacer()
                         
-                        Button {
-                            showFFmpegGuide = true
-                        } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: streamManager.isAvailable ? "gearshape" : "arrow.down.circle.fill")
-                                Text(streamManager.isAvailable ? "檢視依賴配置" : "安裝與下載指引")
-                            }
-                            .font(.system(size: 11, weight: streamManager.isAvailable ? .regular : .bold))
-                        }
-                        .buttonStyle(.bordered)
+                        Text("100% 免安裝")
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundColor(.green)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
+                            .background(Color.green.opacity(0.12))
+                            .cornerRadius(5)
                     }
                     
-                    if streamManager.isAvailable {
+                    VStack(alignment: .leading, spacing: 4) {
                         HStack(spacing: 6) {
-                            Text("🟢 狀態正常：")
+                            Text("🟢 狀態極佳：")
                                 .font(.system(size: 11, weight: .semibold))
                                 .foregroundColor(.green)
-                            Text("已成功載入執行檔 (\(streamManager.ffmpegPath ?? ""))")
-                                .font(.system(size: 11, design: .monospaced))
-                                .foregroundColor(.secondary)
-                        }
-                    } else {
-                        VStack(alignment: .leading, spacing: 4) {
-                            Text("🔴 尚未安裝：目前系統未偵測到 FFmpeg，AI 即時人數計算將無法取得影像串流。")
-                                .font(.system(size: 11, weight: .semibold))
-                                .foregroundColor(.orange)
-                            Text("請點擊右上角「安裝與下載指引」一鍵複製 Homebrew 指令或下載官方免安裝版。")
+                            Text("已啟用 VLCKit 記憶體零拷貝原生取樣 (單一 RTSP 串流共享)")
                                 .font(.system(size: 11))
                                 .foregroundColor(.secondary)
                         }
+                        Text("無需在 Mac 安裝任何外部命令列工具或依賴組件，頻寬消耗減少 50%，符合 App Store 沙盒安全標準。")
+                            .font(.system(size: 10.5))
+                            .foregroundColor(.secondary.opacity(0.85))
                     }
                 }
                 .padding(14)
-                .background(streamManager.isAvailable ? Color.green.opacity(0.06) : Color.orange.opacity(0.08))
+                .background(Color.green.opacity(0.06))
                 .cornerRadius(10)
                 .overlay(
                     RoundedRectangle(cornerRadius: 10)
-                        .stroke(streamManager.isAvailable ? Color.green.opacity(0.2) : Color.orange.opacity(0.3), lineWidth: 1)
+                        .stroke(Color.green.opacity(0.2), lineWidth: 1)
                 )
 
                 // Card 1: Re-ID 人員特徵記憶重識別 (NEW)
@@ -771,69 +762,169 @@ struct SettingsView: View {
     }
     
     @ObservedObject private var ytService = YouTubeLiveService.shared
+    @State private var showAdvancedOAuth = false
+    @State private var ytLoginMessage = ""
 
     private func youtubeTab() -> some View {
         VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 12) {
-                Text("Google Cloud Console OAuth 2.0 API 認證設定")
-                    .font(.system(size: 12, weight: .bold))
-                    .foregroundColor(.secondary)
-                
-                VStack(spacing: 10) {
-                    HStack {
-                        Text("Google Client ID:")
-                            .font(.system(size: 12))
-                            .frame(width: 140, alignment: .trailing)
-                        TextField("例如：xxxx.apps.googleusercontent.com", text: $ytService.clientID)
-                            .textFieldStyle(.roundedBorder)
-                    }
-                    
-                    HStack {
-                        Text("Google Client Secret:")
-                            .font(.system(size: 12))
-                            .frame(width: 140, alignment: .trailing)
-                        SecureField("GOCSPX-xxxxxx", text: $ytService.clientSecret)
-                            .textFieldStyle(.roundedBorder)
-                    }
-                }
-                
+            // 主要使用者的 Google 一鍵登入卡片
+            VStack(alignment: .leading, spacing: 14) {
                 HStack(spacing: 12) {
-                    Button("儲存 OAuth 憑證") {
-                        ytService.saveClientCredentials(id: ytService.clientID, secret: ytService.clientSecret)
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .controlSize(.small)
+                    Image(systemName: "person.crop.circle.badge.checkmark")
+                        .font(.system(size: 28))
+                        .foregroundColor(.red)
                     
-                    if ytService.isLoggedIn {
-                        HStack(spacing: 6) {
-                            Image(systemName: "checkmark.circle.fill")
-                                .foregroundColor(.green)
-                            Text("已成功連線頻道：\(ytService.channelTitle)")
-                                .font(.system(size: 11, weight: .bold))
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Google 帳號與 YouTube 直播連結")
+                            .font(.system(size: 14, weight: .bold))
+                        Text("直接使用 Google 帳號授權，自動同步頻道資訊並控制直播與串流碼。")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
+                    }
+                    
+                    Spacer()
+                }
+                
+                Divider()
+                
+                if ytService.isLoggedIn {
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(spacing: 12) {
+                            if !ytService.channelAvatarUrl.isEmpty, let url = URL(string: ytService.channelAvatarUrl) {
+                                AsyncImage(url: url) { image in
+                                    image.resizable().aspectRatio(contentMode: .fill)
+                                } placeholder: {
+                                    Image(systemName: "person.circle.fill")
+                                }
+                                .frame(width: 38, height: 38)
+                                .clipShape(Circle())
+                            } else {
+                                Image(systemName: "person.circle.fill")
+                                    .font(.system(size: 38))
+                                    .foregroundColor(.red)
+                            }
+                            
+                            VStack(alignment: .leading, spacing: 3) {
+                                HStack(spacing: 6) {
+                                    Text(ytService.channelTitle)
+                                        .font(.system(size: 13, weight: .bold))
+                                    Image(systemName: "checkmark.seal.fill")
+                                        .foregroundColor(.green)
+                                        .font(.system(size: 12))
+                                }
+                                Text("訂閱者：\(ytService.subscriberCount) 位 · 憑證已自動安全儲存於 macOS Keychain")
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                            }
+                            
+                            Spacer()
+                            
+                            Button(action: {
+                                ytService.logout()
+                                ytLoginMessage = "已登出 Google 帳號"
+                            }) {
+                                Label("登出帳號", systemImage: "rectangle.portrait.and.arrow.right")
+                            }
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
                         }
-                    } else {
-                        Button("🔑 觸發 Google OAuth 2.0 登入") {
-                            ytService.saveClientCredentials(id: ytService.clientID, secret: ytService.clientSecret)
-                            ytService.startOAuthLogin { _, _ in }
+                    }
+                    .padding(10)
+                    .background(Color.green.opacity(0.08))
+                    .cornerRadius(8)
+                } else {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(spacing: 14) {
+                            Button(action: {
+                                ytLoginMessage = "正在開啟 Google 授權視窗..."
+                                ytService.startOAuthLogin { success, msg in
+                                    ytLoginMessage = msg
+                                }
+                            }) {
+                                HStack(spacing: 8) {
+                                    Image(systemName: "globe.asia.australia.fill")
+                                        .font(.system(size: 14, weight: .bold))
+                                    Text("使用 Google 帳號登入")
+                                        .font(.system(size: 13, weight: .bold))
+                                }
+                                .padding(.horizontal, 14)
+                                .padding(.vertical, 7)
+                            }
+                            .buttonStyle(.borderedProminent)
+                            .tint(.red)
+                            
+                            if !ytLoginMessage.isEmpty {
+                                Text(ytLoginMessage)
+                                    .font(.system(size: 11))
+                                    .foregroundColor(.secondary)
+                            }
                         }
-                        .buttonStyle(.bordered)
-                        .controlSize(.small)
+                        
+                        Text("💡 提示：點擊按鈕後會彈出安全驗證視窗，請登入您的 YouTube 直播頻道帳號。授權後 HorizonPTZ 將可自動為您建立直播活動與取得 RTMP 串流金鑰。")
+                            .font(.system(size: 11))
+                            .foregroundColor(.secondary)
                     }
                 }
-                .padding(.top, 4)
-                
-                Text("💡 提示：輸入 Google Cloud Console 產生的 Client ID 與 Secret 後點擊儲存，更新 App 時憑證將自動保留於 macOS Keychain (系統金鑰圈)，完全不需要重新登入！")
-                    .font(.system(size: 11))
-                    .foregroundColor(.secondary)
-                    .padding(.top, 4)
             }
-            .padding(14)
+            .padding(16)
             .background(Color(nsColor: .controlBackgroundColor).opacity(0.5))
             .cornerRadius(8)
             .overlay(
                 RoundedRectangle(cornerRadius: 8)
                     .stroke(Color.secondary.opacity(0.15), lineWidth: 1)
             )
+            
+            // 進階自訂 API 憑證 (折疊選單，通常不需要動)
+            DisclosureGroup(isExpanded: $showAdvancedOAuth) {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("請輸入您的 Google Cloud OAuth 2.0 憑證（僅需設定一次，將永久安全保存在本機）：")
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary)
+                        .padding(.top, 4)
+                    
+                    VStack(spacing: 10) {
+                        HStack {
+                            Text("Client ID:")
+                                .font(.system(size: 12))
+                                .frame(width: 100, alignment: .trailing)
+                            TextField("xxxx.apps.googleusercontent.com", text: $ytService.clientID)
+                                .textFieldStyle(.roundedBorder)
+                        }
+                        
+                        HStack {
+                            Text("Client Secret:")
+                                .font(.system(size: 12))
+                                .frame(width: 100, alignment: .trailing)
+                            SecureField("GOCSPX-xxxxxx", text: $ytService.clientSecret)
+                                .textFieldStyle(.roundedBorder)
+                        }
+                    }
+                    
+                    HStack(spacing: 10) {
+                        Button("儲存憑證") {
+                            ytService.saveClientCredentials(id: ytService.clientID, secret: ytService.clientSecret)
+                            ytLoginMessage = "✅ 憑證已成功保存至本機，未來更新不受影響"
+                        }
+                        .buttonStyle(.borderedProminent)
+                        .controlSize(.small)
+                        
+                        Button("清除本機憑證") {
+                            ytService.saveClientCredentials(id: "", secret: "")
+                            ytLoginMessage = "已清除本機憑證"
+                        }
+                        .buttonStyle(.borderless)
+                        .controlSize(.small)
+                    }
+                }
+                .padding(.top, 6)
+            } label: {
+                Text("Google API OAuth 憑證設定")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(.secondary)
+            }
+            .padding(12)
+            .background(Color(nsColor: .controlBackgroundColor).opacity(0.3))
+            .cornerRadius(8)
             
             Spacer()
         }

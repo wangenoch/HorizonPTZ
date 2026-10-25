@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- App Sandbox 啟用 -->
+    <key>com.apple.security.app-sandbox</key>
+    <true/>
+    
+    <!-- 網路客戶端 (RTSP, VISCA UDP, 導播機 TCP, YouTube Data API) -->
+    <key>com.apple.security.network.client</key>
+    <true/>
+    
+    <!-- 本地網路伺服器 (8080 端口: OAuth 回呼與本地合法 Embed 監看) -->
+    <key>com.apple.security.network.server</key>
+    <true/>
+    
+    <!-- Keychain 讀寫 (安全存取 YouTube Refresh Token 憑證) -->
+    <key>com.apple.security.keychain</key>
+    <true/>
+</dict>
+</plist>

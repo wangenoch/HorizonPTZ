@@ -1,0 +1,466 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>HorizonPTZ - Professional PTZ & Studio Live Controller for macOS</title>
+  <meta name="description" content="HorizonPTZ is an all-in-one macOS desktop controller for PTZ cameras, video switcher integration, local on-device AI person-counting, and YouTube Live broadcasting.">
+  <style>
+    :root {
+      --bg: #090d16;
+      --card-bg: #131c2e;
+      --card-hover: #1a263d;
+      --text-main: #f8fafc;
+      --text-sub: #94a3b8;
+      --accent: #38bdf8;
+      --accent-glow: rgba(56, 189, 248, 0.15);
+      --border: #22324e;
+      --success: #10b981;
+      --tag-bg: #1e293b;
+    }
+    * {
+      box-sizing: border-box;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--text-main);
+      line-height: 1.6;
+      margin: 0;
+      padding: 0;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    nav {
+      width: 100%;
+      max-width: 1000px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 24px 20px;
+    }
+    .logo {
+      font-size: 1.25rem;
+      font-weight: 700;
+      color: #fff;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+    }
+    .logo-badge {
+      background: linear-gradient(135deg, #0284c7, #38bdf8);
+      color: white;
+      font-size: 0.75rem;
+      padding: 3px 8px;
+      border-radius: 6px;
+      font-weight: 600;
+    }
+    .nav-links {
+      display: flex;
+      gap: 16px;
+      align-items: center;
+    }
+    .nav-links a {
+      color: var(--text-sub);
+      text-decoration: none;
+      font-size: 0.9rem;
+      transition: color 0.2s;
+    }
+    .nav-links a:hover {
+      color: var(--accent);
+    }
+    .lang-btn {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      color: var(--text-main);
+      padding: 6px 14px;
+      border-radius: 20px;
+      font-size: 0.85rem;
+      cursor: pointer;
+      text-decoration: none;
+    }
+    .hero {
+      text-align: center;
+      max-width: 850px;
+      padding: 60px 20px 40px;
+    }
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--accent-glow);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      color: var(--accent);
+      padding: 6px 16px;
+      border-radius: 30px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      margin-bottom: 24px;
+    }
+    h1 {
+      font-size: 3rem;
+      font-weight: 800;
+      letter-spacing: -0.03em;
+      margin: 0 0 16px;
+      background: linear-gradient(180deg, #ffffff 0%, #94a3b8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+    .hero-desc {
+      font-size: 1.2rem;
+      color: var(--text-sub);
+      margin: 0 auto 32px;
+      max-width: 720px;
+      line-height: 1.6;
+    }
+    .cta-row {
+      display: flex;
+      justify-content: center;
+      gap: 16px;
+      margin-bottom: 50px;
+      flex-wrap: wrap;
+    }
+    .btn-primary {
+      background: #0284c7;
+      color: white;
+      padding: 12px 28px;
+      border-radius: 8px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: background 0.2s, transform 0.1s;
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .btn-primary:hover {
+      background: #0369a1;
+      transform: translateY(-1px);
+    }
+    .btn-secondary {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      color: var(--text-main);
+      padding: 12px 28px;
+      border-radius: 8px;
+      font-weight: 600;
+      text-decoration: none;
+      transition: border-color 0.2s;
+    }
+    .btn-secondary:hover {
+      border-color: var(--accent);
+    }
+    .features-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px;
+      max-width: 1000px;
+      width: 100%;
+      padding: 0 20px 60px;
+    }
+    .feature-card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 28px;
+      transition: transform 0.2s, border-color 0.2s;
+    }
+    .feature-card:hover {
+      border-color: #38bdf8;
+      transform: translateY(-2px);
+    }
+    .feature-icon {
+      font-size: 2rem;
+      margin-bottom: 16px;
+      display: inline-block;
+    }
+    .feature-card h3 {
+      margin: 0 0 10px;
+      font-size: 1.25rem;
+      color: #fff;
+    }
+    .feature-card p {
+      margin: 0;
+      color: var(--text-sub);
+      font-size: 0.95rem;
+      line-height: 1.5;
+    }
+    .section-container {
+      max-width: 1000px;
+      width: 100%;
+      padding: 40px 20px;
+    }
+    .content-box {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 40px;
+      margin-bottom: 40px;
+    }
+    .content-box h2 {
+      margin-top: 0;
+      color: var(--accent);
+      font-size: 1.7rem;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 12px;
+      margin-bottom: 24px;
+    }
+    .content-box h3 {
+      color: #e2e8f0;
+      font-size: 1.2rem;
+      margin-top: 28px;
+    }
+    .content-box p, .content-box li {
+      color: #cbd5e1;
+      font-size: 1rem;
+    }
+    .content-box ul {
+      padding-left: 20px;
+    }
+    .content-box li {
+      margin-bottom: 8px;
+    }
+    code {
+      background: #090d16;
+      padding: 3px 8px;
+      border-radius: 6px;
+      color: #38bdf8;
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 0.9em;
+    }
+    .spec-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 20px;
+    }
+    .spec-table th, .spec-table td {
+      padding: 12px 16px;
+      border: 1px solid var(--border);
+      text-align: left;
+    }
+    .spec-table th {
+      background: #090d16;
+      color: var(--accent);
+    }
+    footer {
+      width: 100%;
+      border-top: 1px solid var(--border);
+      padding: 40px 20px;
+      text-align: center;
+      color: var(--text-sub);
+      font-size: 0.9rem;
+      margin-top: auto;
+    }
+    footer a {
+      color: var(--accent);
+      text-decoration: none;
+    }
+    footer a:hover {
+      text-decoration: underline;
+    }
+    @media (max-width: 640px) {
+      h1 { font-size: 2.2rem; }
+      .content-box { padding: 24px; }
+      .hero { padding: 40px 20px 20px; }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Top Navigation -->
+  <nav>
+    <a href="#" class="logo">
+      🎥 HorizonPTZ
+      <span class="logo-badge">macOS</span>
+    </a>
+    <div class="nav-links">
+      <a href="#features-en">Features</a>
+      <a href="#features-zh">特色功能</a>
+      <a href="#privacy-en">Privacy Policy</a>
+      <a href="#privacy-zh">隱私政策</a>
+      <a href="https://github.com/wangenoch/HorizonPTZ" target="_blank" rel="noopener" class="lang-btn">GitHub</a>
+    </div>
+  </nav>
+
+  <!-- Hero Header (Bilingual) -->
+  <section class="hero">
+    <div class="hero-badge">
+      <span>🛡️ Mac App Store Ready • Local-First Architecture</span>
+    </div>
+    <h1>HorizonPTZ 控制中心</h1>
+    <p class="hero-desc">
+      專業 macOS PTZ 攝影機控制、導播機連線整合、本機 AI 人流即時辨識與 YouTube Live 直播監控一體化工作台。<br>
+      <span style="font-size: 0.95em; color: #64748b;">
+        A professional, local-first macOS desktop controller for PTZ cameras, video switchers, on-device AI headcount, and YouTube Live broadcasting.
+      </span>
+    </p>
+    <div class="cta-row">
+      <a href="#privacy-zh" class="btn-primary">閱讀隱私政策 (繁中)</a>
+      <a href="#privacy-en" class="btn-secondary">Privacy Policy (English)</a>
+    </div>
+  </section>
+
+  <!-- Key Features Grid (Chinese) -->
+  <section id="features-zh" class="section-container" style="padding-bottom: 0;">
+    <h2 style="font-size: 1.6rem; color: #fff; margin-bottom: 24px; text-align: center;">⚡ 核心功能介紹 (Features)</h2>
+  </section>
+  <div class="features-grid">
+    <div class="feature-card">
+      <div class="feature-icon">🎮</div>
+      <h3>多機 PTZ 直覺操控</h3>
+      <p>支援雙機以上 VISCA over IP / ONVIF 通訊協定，具備直覺的滑鼠向量操控、畫面抓取移動與多組鏡頭預設點（Presets），並支援實體控制器搖桿整合。</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🧠</div>
+      <h3>本機端 CoreML YOLO AI</h3>
+      <p>採用 Apple Neural Engine 於 Mac 記憶體中直接推論，實現毫秒級即時人流與會眾人數統計。100% 本地運算，零外部網路依賴，隱私絕對安全。</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🎛️</div>
+      <h3>導播機 Tally 雙向整合</h3>
+      <p>深度整合 RGBlink mini-pro 等專業導播機，具備本地 TCP 即時監聽與狀態反饋，自動連動 PGM 節目台與 PVW 預監畫面，提供綠紅 Tally 提示燈號。</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🔴</div>
+      <h3>YouTube Studio 直播工作台</h3>
+      <p>內建雙向可調式儀表板與即時留言室，直接掌握即時串流健康度（位元率、影格率、解析度），並支援多場直播無縫切換與獨立 PiP 浮動子母畫面監看。</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">🔒</div>
+      <h3>嚴格沙盒 (App Sandbox)</h3>
+      <p>符合 Apple Mac App Store 最高安全規範，徹底告別外部命令行工具依賴。採樣由 VLCKit 內建記憶體提取，單一 RTSP 連線省下 50% 頻寬與 CPU 負擔。</p>
+    </div>
+    <div class="feature-card">
+      <div class="feature-icon">⚡</div>
+      <h3>Universal 雙架構原生極速</h3>
+      <p>採用純原生 SwiftUI + AppKit 開發，支援 Apple Silicon (M1/M2/M3/M4) 與 Intel Mac 雙架構，運行流暢省電，專為長時間直播與轉播任務量身打造。</p>
+    </div>
+  </div>
+
+  <div class="section-container">
+    <!-- English Features Overview -->
+    <div id="features-en" class="content-box">
+      <h2>App Overview & Capabilities (English)</h2>
+      <p>HorizonPTZ is an all-in-one macOS desktop production assistant designed for churches, studios, broadcasting operators, and live production engineers.</p>
+      
+      <table class="spec-table">
+        <thead>
+          <tr>
+            <th>Module</th>
+            <th>Technical Capabilities</th>
+            <th>App Store Compliance</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><strong>PTZ Camera Control</strong></td>
+            <td>Low-latency RTSP playback via LibVLC, VISCA over IP / ONVIF pan-tilt-zoom, drag-to-aim gestures, hardware gamepad support.</td>
+            <td>Local LAN communication (<code>NSAllowsLocalNetworking</code>)</td>
+          </tr>
+          <tr>
+            <td><strong>On-Device AI Headcount</strong></td>
+            <td>Direct in-memory video frame sampling, Apple Vision + CoreML YOLO inference on Apple Neural Engine.</td>
+            <td>Zero cloud leakage, 100% private & offline</td>
+          </tr>
+          <tr>
+            <td><strong>Hardware Switcher</strong></td>
+            <td>RGBlink mini-pro TCP client & server listener, bidirectional Tally lights sync (Program / Preview).</td>
+            <td>Sandboxed sockets (<code>network.client</code> / <code>network.server</code>)</td>
+          </tr>
+          <tr>
+            <td><strong>YouTube Live Studio</strong></td>
+            <td>Google OAuth 2.0, live stream diagnostics (bitrate, resolution, frame rate), live chat monitor, multi-broadcast switcher & PiP pop-outs.</td>
+            <td>Encrypted token storage in macOS Keychain (<code>keychain</code>)</td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+
+    <!-- Privacy Policy Section: Traditional Chinese -->
+    <div id="privacy-zh" class="content-box">
+      <h2>隱私權政策 (HorizonPTZ 繁體中文)</h2>
+      <p><em>最後更新日期：2026 年 10 月 25 日</em></p>
+
+      <p>HorizonPTZ（以下簡稱「本應用程式」）是一套專為 macOS 設計的專業 PTZ 攝影機控制、導播機連線整合、AI 人流辨識輔助與 YouTube 直播即時監控軟體。</p>
+      <p>我們極度重視您的隱私，並致力於保護您的個人資料。本隱私權政策旨在說明本應用程式如何存取、處理您的資料以及您的權利。</p>
+
+      <h3>一、 資料收集與處理原則</h3>
+      <p>HorizonPTZ 採用「本地優先（Local-First）」架構。<strong>我們未架設任何第三方數據追蹤伺服器，絕不收集、不出售、亦不向任何第三方傳輸您的個人敏感資料。</strong></p>
+
+      <ul>
+        <li><strong>攝影機影像串流與 AI 辨識：</strong>本應用程式直接透過區域網路與您的 PTZ 攝影機建立 RTSP 視訊連線。所有影像辨識與人流統計均透過 Apple 晶片內建之神經網路引擎 (Neural Engine / GPU) 在<strong>您的 Mac 本機記憶體</strong>中完成即時運算。<strong>絕不</strong>將任何監視畫面、影格、截圖或特徵資料上傳至雲端或遠端伺服器。</li>
+        <li><strong>設備連線與網路通訊：</strong>您所設定的攝影機 IP、VISCA 連線埠、導播機 IP 等參數，均僅儲存於您本機的 macOS 偏好設定（<code>UserDefaults</code>）中。對攝影機與 RGBlink 導播機的所有控制指令均嚴格限制在您的區域網路（LAN）內傳輸。</li>
+        <li><strong>YouTube 帳號與直播功能整合：</strong>若您啟用 YouTube 直播控制台，授權流程直接與 Google 官方驗證伺服器對接。授權憑證（Token）僅保存在您 Mac 的安全儲存區（Keychain），僅用於透過 Google 官方 YouTube Live Streaming API 讀取您當前的直播健康度、觀看人數與即時留言。本應用程式不會將您的 YouTube 資訊轉發至外部。您使用 YouTube 服務時亦受 <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google 隱私權政策</a> 規範。</li>
+      </ul>
+
+      <h3>二、 系統權限與沙盒規範 (App Sandbox)</h3>
+      <p>依據 Apple Mac App Store 審查指南，HorizonPTZ 完整運行於 macOS 沙盒（Sandbox）安全架構內，僅請求必要權限：</p>
+      <ul>
+        <li><code>com.apple.security.network.client</code>：用於連線區域網路攝影機、導播機及 YouTube API。</li>
+        <li><code>com.apple.security.network.server</code>：用於接收導播機本地 Tally/監聽訊號。</li>
+        <li><code>com.apple.security.keychain</code>：用於在本機加密保存您的 YouTube API 授權凭據。</li>
+      </ul>
+
+      <h3>三、 資料保存與刪除</h3>
+      <p>所有設定資料均保存在您的本機裝置中。您可以隨時在軟體內登出 YouTube，或前往 <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener">Google 帳戶安全性設定</a> 撤銷授權；移除本應用程式即可完整清除本機相關設定。</p>
+
+      <h3>四、 聯絡我們</h3>
+      <p>若您對本隱私權政策或應用程式功能有任何疑問或建議，歡迎透過以下方式聯繫開發團隊：</p>
+      <ul>
+        <li><strong>開發者：</strong>Enoch Wang</li>
+        <li><strong>電子郵件：</strong><a href="mailto:enoch.wang300@gmail.com">enoch.wang300@gmail.com</a></li>
+        <li><strong>GitHub 專案：</strong><a href="https://github.com/wangenoch/HorizonPTZ" target="_blank" rel="noopener">https://github.com/wangenoch/HorizonPTZ</a></li>
+      </ul>
+    </div>
+
+    <!-- Privacy Policy Section: English -->
+    <div id="privacy-en" class="content-box">
+      <h2>Privacy Policy (HorizonPTZ English)</h2>
+      <p><em>Last Updated: October 25, 2026</em></p>
+
+      <p>HorizonPTZ ("we", "our", or "the Application") is a macOS desktop controller application designed for professional PTZ camera management, video switcher integration, AI person-counting assistance, and YouTube Live broadcasting monitoring.</p>
+      <p>We respect your privacy and are committed to protecting personal data. This Privacy Policy explains what information the Application accesses, how it is handled, and your choices.</p>
+
+      <h3>1. Information Collection and Handling</h3>
+      <p>HorizonPTZ operates as a local-first utility. <strong>We do not operate backend tracking servers, and we do not collect, store, sell, or transmit your personal data to any external parties.</strong></p>
+
+      <ul>
+        <li><strong>Camera Video Streams & On-Device AI Processing:</strong> The Application connects directly to your local PTZ cameras via RTSP (Real-Time Streaming Protocol). All computer vision and person-counting features (via Apple Vision and CoreML YOLO) are processed <strong>entirely locally in your Mac's on-chip Neural Engine / GPU / RAM</strong>. No video frames, camera snapshots, or facial data are ever uploaded to any cloud or remote servers.</li>
+        <li><strong>Hardware Settings & Local Network:</strong> Camera IP addresses, VISCA/ONVIF ports, and video switcher connection details are stored strictly in your local macOS preferences (<code>UserDefaults</code>). Network requests to your hardware remain strictly within your Local Area Network (LAN).</li>
+        <li><strong>YouTube Account & Live Streaming Integration:</strong> If you connect your YouTube Studio account, authentication is performed directly with Google's OAuth 2.0 service. Access and refresh tokens are stored securely on your local device (in macOS Keychain) solely to fetch stream health metrics, viewer counts, and chat messages via the official Google YouTube Live Streaming API. Your usage of YouTube services is also governed by <a href="https://policies.google.com/privacy" target="_blank" rel="noopener">Google's Privacy Policy</a>.</li>
+      </ul>
+
+      <h3>2. System Permissions & App Sandbox</h3>
+      <p>In accordance with Apple Mac App Store guidelines, HorizonPTZ runs within the macOS App Sandbox and requests only minimal necessary entitlements:</p>
+      <ul>
+        <li><code>com.apple.security.network.client</code>: Required to connect to local PTZ cameras, video switchers, and the YouTube API.</li>
+        <li><code>com.apple.security.network.server</code>: Required for local tally feedback / port listener integration with video switchers.</li>
+        <li><code>com.apple.security.keychain</code>: Required for encrypting and securely retaining your YouTube API authentication tokens.</li>
+      </ul>
+
+      <h3>3. Data Retention and Deletion</h3>
+      <p>All application configurations are stored locally on your device. You can disconnect your YouTube account at any time in the app or via <a href="https://myaccount.google.com/permissions" target="_blank" rel="noopener">Google Account Permissions</a>. Removing the app completely deletes local preferences.</p>
+
+      <h3>4. Contact Us</h3>
+      <p>If you have any questions or feedback regarding this Privacy Policy, please contact:</p>
+      <ul>
+        <li><strong>Developer:</strong> Enoch Wang</li>
+        <li><strong>Email:</strong> <a href="mailto:enoch.wang300@gmail.com">enoch.wang300@gmail.com</a></li>
+        <li><strong>GitHub:</strong> <a href="https://github.com/wangenoch/HorizonPTZ" target="_blank" rel="noopener">https://github.com/wangenoch/HorizonPTZ</a></li>
+      </ul>
+    </div>
+  </div>
+
+  <!-- Footer -->
+  <footer>
+    <p>&copy; 2026 HorizonPTZ. Developed by Enoch Wang. Built with Swift & SwiftUI for macOS.</p>
+    <p>
+      <a href="https://github.com/wangenoch/HorizonPTZ" target="_blank" rel="noopener">GitHub Repository</a> • 
+      <a href="#privacy-zh">隱私政策</a> • 
+      <a href="#privacy-en">Privacy Policy</a>
+    </p>
+  </footer>
+
+</body>
+</html>

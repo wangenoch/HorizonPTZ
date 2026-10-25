@@ -6,16 +6,25 @@ class WebNavigationHelper: ObservableObject {
     @Published var canGoBack = false
     @Published var canGoForward = false
     @Published var currentUrl: String
+    @Published var htmlContent: String? = nil
     @Published var isLoading = false
     
-    init(defaultUrl: String = "https://studio.youtube.com/") {
+    init(defaultUrl: String = "https://studio.youtube.com/", htmlContent: String? = nil) {
         self.currentUrl = defaultUrl
+        self.htmlContent = htmlContent
     }
     
     func load(urlString: String) {
         if let url = URL(string: urlString) {
-            webView?.load(URLRequest(url: url))
+            var request = URLRequest(url: url)
+            request.setValue("https://www.youtube.com", forHTTPHeaderField: "Referer")
+            request.setValue("https://www.youtube.com", forHTTPHeaderField: "Origin")
+            webView?.load(request)
         }
+    }
+    
+    func loadHTML(htmlString: String, baseURL: URL? = URL(string: "https://www.youtube.com")) {
+        webView?.loadHTMLString(htmlString, baseURL: baseURL)
     }
     
     func goBack() {
@@ -51,7 +60,9 @@ struct WebView: NSViewRepresentable {
         // Set modern desktop Safari User-Agent to bypass YouTube Studio "unsupported browser" warnings
         webView.customUserAgent = "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.5 Safari/605.1.15"
         
-        if let url = URL(string: helper.currentUrl) {
+        if let html = helper.htmlContent {
+            webView.loadHTMLString(html, baseURL: URL(string: "https://www.youtube.com"))
+        } else if let url = URL(string: helper.currentUrl) {
             webView.load(URLRequest(url: url))
         }
         return webView
@@ -334,6 +345,42 @@ struct WebView: NSViewRepresentable {
                 """
                 webView.evaluateJavaScript(js, completionHandler: nil)
             }
+            
+            // 如果是 YouTube 監看頁面，自動隱藏頂部導覽列與邊欄，聚焦在影片播放器
+            if let urlStr = webView.url?.absoluteString, urlStr.contains("youtube.com") {
+                let ytFocusJs = """
+                (function() {
+                    function applyCleanStyles() {
+                        var style = document.getElementById('horizon-clean-yt-style');
+                        if (!style) {
+                            style = document.createElement('style');
+                            style.id = 'horizon-clean-yt-style';
+                            document.head.appendChild(style);
+                        }
+                        style.innerHTML = `
+                            #masthead-container, ytd-masthead, #guide, #secondary, #below, #chat-container, #header, #related, ytd-browse, #contents { display: none !important; }
+                            #page-manager { margin-top: 0 !important; }
+                            ytd-watch-flexy { padding: 0 !important; margin: 0 !important; }
+                            #player-container-outer, #player-container-inner, #player-container { 
+                                position: fixed !important; 
+                                top: 0 !important; 
+                                left: 0 !important; 
+                                width: 100vw !important; 
+                                height: 100vh !important; 
+                                max-height: 100vh !important; 
+                                z-index: 999999 !important; 
+                                background: #000 !important; 
+                            }
+                            .html5-video-player { width: 100% !important; height: 100% !important; }
+                            video { width: 100% !important; height: 100% !important; object-fit: contain !important; }
+                        `;
+                    }
+                    applyCleanStyles();
+                    setInterval(applyCleanStyles, 1000);
+                })();
+                """
+                webView.evaluateJavaScript(ytFocusJs, completionHandler: nil)
+            }
         }
         
         func webView(_ webView: WKWebView, didFail navigation: WKNavigation!, withError error: Error) {
@@ -346,15 +393,20 @@ struct WebView: NSViewRepresentable {
 
 struct WebBrowserComponent: View {
     let initialUrl: String
+    let htmlContent: String?
+    let showToolbar: Bool
     
     @StateObject private var webHelper: WebNavigationHelper
     @State private var urlInput: String
-    @State private var isToolbarVisible = true
+    @State private var isToolbarVisible: Bool
     
-    init(initialUrl: String = "https://studio.youtube.com/") {
+    init(initialUrl: String = "https://studio.youtube.com/", htmlContent: String? = nil, showToolbar: Bool = true) {
         self.initialUrl = initialUrl
-        self._webHelper = StateObject(wrappedValue: WebNavigationHelper(defaultUrl: initialUrl))
+        self.htmlContent = htmlContent
+        self.showToolbar = showToolbar
+        self._webHelper = StateObject(wrappedValue: WebNavigationHelper(defaultUrl: initialUrl, htmlContent: htmlContent))
         self._urlInput = State(initialValue: initialUrl)
+        self._isToolbarVisible = State(initialValue: showToolbar)
     }
     
     var body: some View {

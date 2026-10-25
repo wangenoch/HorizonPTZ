@@ -7,6 +7,9 @@ final class PlayerViewModel: NSObject, ObservableObject, VLCMediaPlayerDelegate 
     var rtspUrl: String = ""
     var cameraIndex: Int = 1
     
+    // 弱引用底層視頻渲染容器視圖，供 AI 即時記憶體畫面擷取
+    weak var containerView: NSView? = nil
+    
     @Published var isReconnecting: Bool = false
     private var lastActiveTime: Date = Date()
     private var watchdogTimer: Timer? = nil
@@ -43,6 +46,7 @@ final class PlayerViewModel: NSObject, ObservableObject, VLCMediaPlayerDelegate 
         watchdogTimer = nil
         mediaPlayer.delegate = nil
         mediaPlayer.drawable = nil
+        containerView = nil
         mediaPlayer.stop()
     }
     
@@ -156,12 +160,14 @@ struct VLCVideoPlayer: NSViewRepresentable {
         view.wantsLayer = true
         view.layer?.backgroundColor = NSColor.black.cgColor
 
+        viewModel.containerView = view
         viewModel.mediaPlayer.drawable = view
         viewModel.start(rtspUrl: rtspUrl, cameraIndex: cameraIndex)
         return view
     }
 
     func updateNSView(_ nsView: NSView, context: Context) {
+        viewModel.containerView = nsView
         if viewModel.mediaPlayer.drawable == nil {
             viewModel.mediaPlayer.drawable = nsView
         }
@@ -231,67 +237,19 @@ struct PlayerView: View {
     @Binding var isAiEnabled: Bool
     
     @StateObject private var viewModel = PlayerViewModel()
-    @ObservedObject private var streamManager = PipeStreamManager.shared
     @State private var liveHumans: [TrackedHuman] = []
     @State private var liveCount: Int = 0
     @State private var isAnalyzing = false
-    @State private var showInstallGuide = false
+    @State private var aiSamplingTimer: Timer? = nil
     
     var body: some View {
         ZStack {
-            // Live Playing RTSP Video Stream
+            // Live Playing RTSP Video Stream (內建單一連線 VLCKit 播放器)
             VLCVideoPlayer(rtspUrl: rtspUrl, viewModel: viewModel, cameraIndex: index)
             
-            // Transparent SwiftUI Canvas Overlay
+            // Transparent SwiftUI Canvas Overlay (AI 人流綠框與人數)
             if isAiEnabled {
                 LiveAIBoundingBoxCanvas(trackedHumans: liveHumans, count: liveCount)
-            }
-            
-            // Missing FFmpeg Alert Badge Overlay
-            if isAiEnabled && !streamManager.isAvailable {
-                VStack {
-                    HStack(spacing: 8) {
-                        Image(systemName: "exclamationmark.triangle.fill")
-                            .foregroundColor(.yellow)
-                            .font(.system(size: 13, weight: .bold))
-                        
-                        Text("未偵測到 FFmpeg：AI 計算需要依賴組件")
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(.white)
-                        
-                        Button {
-                            showInstallGuide = true
-                        } label: {
-                            HStack(spacing: 4) {
-                                Image(systemName: "arrow.down.circle.fill")
-                                Text("安裝與下載指引")
-                            }
-                            .font(.system(size: 11, weight: .bold))
-                            .foregroundColor(.black)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .background(Color.yellow)
-                            .cornerRadius(5)
-                        }
-                        .buttonStyle(.plain)
-                    }
-                    .padding(.horizontal, 12)
-                    .padding(.vertical, 6)
-                    .background(Color.black.opacity(0.88))
-                    .cornerRadius(8)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 8)
-                            .stroke(Color.yellow.opacity(0.8), lineWidth: 1)
-                    )
-                    .shadow(radius: 4)
-                    .padding(.top, 12)
-                    
-                    Spacer()
-                }
-                .transition(.opacity)
-                .sheet(isPresented: $showInstallGuide) {
-                    FFmpegInstallGuideView(isPresented: $showInstallGuide)
-                }
             }
             
             // Reconnecting Alert Badge Overlay
@@ -342,13 +300,49 @@ struct PlayerView: View {
         }
     }
     
+    // MARK: - 內建 VLCKit 原生記憶體取樣 (完全擺脫外部 FFmpeg 依賴，零額外連線)
     private func updateAiStream() {
-        if isAiEnabled {
-            PipeStreamManager.shared.startStream(index: index, rtspUrl: rtspUrl) { image in
-                guard self.isAiEnabled, !self.isAnalyzing else { return }
-                self.isAnalyzing = true
-                
-                PeopleCounterService.shared.analyzePeopleCount(in: image, cameraIndex: self.index) { result in
+        stopAiStream()
+        guard isAiEnabled else { return }
+        
+        AppLogger.log("🚀 [PlayerView \(index)] 啟動 VLCKit 內建記憶體 AI 畫面取樣 (10fps)")
+        
+        // 設定每 100ms (10fps) 取樣一張記憶體 Frame 送給 Vision / YOLO 深度學習分析
+        aiSamplingTimer = Timer.scheduledTimer(withTimeInterval: 0.10, repeats: true) { _ in
+            guard isAiEnabled, !isAnalyzing else { return }
+            
+            // 優先取得 VLCKit 當前幀 (優先使用 lastSnapshot，備援使用 CALayer 記憶體渲染)
+            var extractedFrame: NSImage? = nil
+            
+            if let snap = viewModel.mediaPlayer.lastSnapshot {
+                extractedFrame = snap
+            } else if let view = viewModel.containerView, let layer = view.layer {
+                let width = Int(view.bounds.width)
+                let height = Int(view.bounds.height)
+                if width > 40 && height > 40 {
+                    let colorSpace = CGColorSpaceCreateDeviceRGB()
+                    if let context = CGContext(
+                        data: nil,
+                        width: width,
+                        height: height,
+                        bitsPerComponent: 8,
+                        bytesPerRow: width * 4,
+                        space: colorSpace,
+                        bitmapInfo: CGImageAlphaInfo.premultipliedLast.rawValue
+                    ) {
+                        layer.render(in: context)
+                        if let cgImg = context.makeImage() {
+                            extractedFrame = NSImage(cgImage: cgImg, size: view.bounds.size)
+                        }
+                    }
+                }
+            }
+            
+            guard let image = extractedFrame else { return }
+            self.isAnalyzing = true
+            
+            PeopleCounterService.shared.analyzePeopleCount(in: image, cameraIndex: self.index) { result in
+                DispatchQueue.main.async {
                     if self.isAiEnabled {
                         self.liveHumans = result.trackedHumans
                         self.liveCount = result.count
@@ -356,14 +350,14 @@ struct PlayerView: View {
                     self.isAnalyzing = false
                 }
             }
-        } else {
-            stopAiStream()
         }
     }
     
     private func stopAiStream() {
+        aiSamplingTimer?.invalidate()
+        aiSamplingTimer = nil
         liveHumans = []
         liveCount = 0
-        PipeStreamManager.shared.stopStream(index: index)
+        isAnalyzing = false
     }
 }
